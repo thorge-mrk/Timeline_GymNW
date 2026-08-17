@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import "./timeline.css";
 
 interface ModalProps {
   /** id des Überschrift-Elements innerhalb von `children`. */
@@ -10,9 +17,23 @@ interface ModalProps {
   maxWidthClass?: string;
 }
 
+/** Ausgang: deutlich schneller als der Eingang (220 ms) — Reagieren darf nie warten. */
+const EXIT_MS = 150;
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 /**
  * Gemeinsame Modal-Hülle: Backdrop, Escape, Fokus, Schließen-Knopf.
  * Wird von EntryDetailModal und ClusterListModal genutzt.
+ *
+ * Der Ausgang läuft über `data-state="closing"`: alle Schließwege gehen durch
+ * `requestClose()`, die Animation läuft, danach meldet die Hülle nach oben.
  */
 export default function Modal({
   titleId,
@@ -23,31 +44,52 @@ export default function Modal({
   const dialogRef = useRef<HTMLDivElement>(null);
   /** Fokus nach dem Schließen zurückgeben. */
   const previousFocus = useRef<Element | null>(null);
+  const exitTimer = useRef<number | undefined>(undefined);
+  /** Verhindert, dass ein zweiter Klick den Ausgang neu startet. */
+  const closingRef = useRef(false);
+  const [closing, setClosing] = useState(false);
 
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+    exitTimer.current = window.setTimeout(
+      onClose,
+      prefersReducedMotion() ? 0 : EXIT_MS
+    );
+  }, [onClose]);
+
+  // Fokus einmalig übernehmen und beim Abbau zurückgeben.
   useEffect(() => {
     previousFocus.current = document.activeElement;
     dialogRef.current?.focus();
 
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+      window.clearTimeout(exitTimer.current);
       const previous = previousFocus.current;
       if (previous instanceof HTMLElement) previous.focus();
     };
-  }, [onClose]);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        requestClose();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [requestClose]);
+
+  const state = closing ? "closing" : "open";
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-coal/40 p-4"
+      data-state={state}
+      className="tl-backdrop fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4 backdrop-blur-sm"
       onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <div
@@ -56,13 +98,14 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`card animate-fade-up relative max-h-[86dvh] w-full overflow-y-auto shadow-(--shadow-card-lg) outline-none ${maxWidthClass}`}
+        data-state={state}
+        className={`tl-modal card relative max-h-[86dvh] w-full overflow-y-auto shadow-(--shadow-pop) outline-none ${maxWidthClass}`}
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={requestClose}
           aria-label="Schließen"
-          className="absolute top-3 right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-paper-line bg-paper-card/95 text-coal-soft shadow-(--shadow-card) transition-colors hover:text-coal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+          className="tl-iconbtn absolute top-3 right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-paper-line bg-paper-card/95 text-coal-soft shadow-(--shadow-card) hover:text-coal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
         >
           <svg
             width="16"

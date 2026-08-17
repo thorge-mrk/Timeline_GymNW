@@ -22,13 +22,13 @@ export const CATEGORIES: readonly Category[] = [
   {
     id: "schule",
     label: "Schule",
-    color: "#0b1338",
+    color: "#060b28",
     description: "Offizielle Ereignisse und Meilensteine der Schule",
   },
   {
     id: "schueler",
     label: "Schüler",
-    color: "#f6921e",
+    color: "#f49231",
     description: "Erinnerungen von Schülerinnen und Schülern",
   },
   {
@@ -46,7 +46,7 @@ export const CATEGORIES: readonly Category[] = [
   {
     id: "sonstiges",
     label: "Sonstiges",
-    color: "#55555a",
+    color: "#57565c",
     description: "Alles, was sonst nirgends passt",
   },
 ] as const;

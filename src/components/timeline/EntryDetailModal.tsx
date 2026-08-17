@@ -76,7 +76,7 @@ export default function EntryDetailModal({
           src={imageUrl}
           alt={entry.title}
           loading="lazy"
-          className="max-h-72 w-full rounded-t-2xl object-cover"
+          className="max-h-72 w-full rounded-t-2xl bg-paper-sunk object-cover"
         />
       )}
 
@@ -85,29 +85,40 @@ export default function EntryDetailModal({
           {entry.title}
         </h2>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-coal-soft">
-          <span className="font-semibold text-coal">
+        {/* Meta-Zeile: Datum führt, alles andere begleitet leise. */}
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-xs">
+          <span className="font-semibold text-coal tabular-nums">
             {formatEntryDate(entry)}
           </span>
 
-          <span className="chip cursor-default border-paper-line bg-paper text-coal">
+          <span aria-hidden="true" className="h-3.5 w-px bg-paper-line" />
+
+          <span className="inline-flex items-center gap-1.5 text-coal-soft">
             <span
               aria-hidden="true"
-              className="h-2 w-2 rounded-full"
+              className="h-1.5 w-1.5 rounded-full"
               style={{ backgroundColor: category.color }}
             />
             {category.label}
           </span>
 
           {entry.is_milestone && (
-            <span className="chip cursor-default border-fox bg-fox text-navy">
-              ★ Meilenstein
+            <span className="inline-flex items-center gap-1 rounded-full bg-fox-soft px-2 py-0.5 text-[11px] font-semibold text-fox-deep">
+              <span aria-hidden="true">★</span> Meilenstein
             </span>
           )}
-
-          {entry.class_name && <span>Klasse {entry.class_name}</span>}
-          {entry.author_name && <span>Erzählt von {entry.author_name}</span>}
         </div>
+
+        {(entry.class_name || entry.author_name) && (
+          <p className="mt-1.5 text-xs text-coal-faint">
+            {[
+              entry.class_name ? `Klasse ${entry.class_name}` : null,
+              entry.author_name ? `Erzählt von ${entry.author_name}` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        )}
 
         {entry.description && (
           <p className="mt-4 text-sm leading-relaxed whitespace-pre-wrap text-coal">
@@ -149,7 +160,7 @@ export default function EntryDetailModal({
               {deleting ? "Wird gelöscht …" : "Löschen"}
             </button>
             {deleteError && (
-              <p className="w-full text-xs text-[#b3402a]">{deleteError}</p>
+              <p className="w-full text-xs text-brick">{deleteError}</p>
             )}
           </div>
         )}

@@ -143,7 +143,7 @@ export default function FilterBar({
 
         <span
           aria-live="polite"
-          className="order-3 ml-auto shrink-0 text-xs whitespace-nowrap text-coal-soft"
+          className="order-3 ml-auto shrink-0 text-xs whitespace-nowrap text-coal-faint tabular-nums"
         >
           {count === 1 ? "1 Eintrag" : `${count} Einträge`}
         </span>

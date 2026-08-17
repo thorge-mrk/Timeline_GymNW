@@ -26,13 +26,29 @@ import EntryDetailModal from "./EntryDetailModal";
 import EntryMarker from "./EntryMarker";
 import MilestoneCard from "./MilestoneCard";
 import TimelineAxis from "./TimelineAxis";
+import "./timeline.css";
 
 /** Kleinste sinnvolle Sichtspanne: drei Monate. Bestimmt den maximalen Zoom. */
 const MIN_VISIBLE_YEARS = 0.25;
 /** Kontext (in Jahren), der beim Anfliegen eines Eintrags sichtbar bleibt. */
 const FOCUS_SPAN_YEARS = 8;
-/** Dauer des Kamerafluges. */
+/** Dauer des Kamerafluges — eine erklärende Bewegung, die länger dauern darf. */
 const FLY_DURATION = 800;
+
+/* --- Gestaffelter Eingang nach Filterwechsel ----------------------------- */
+
+/** Abstand zwischen zwei Elementen der Welle. */
+const ENTER_STEP_MS = 40;
+/** Danach starten alle gleichzeitig — sonst wartet man dem Zeitstrahl beim Bauen zu. */
+const ENTER_MAX_INDEX = 12;
+/** Fenster, in dem der Eingang gilt (letzte Verzögerung + Dauer + Reserve). */
+const ENTER_WINDOW_MS = ENTER_MAX_INDEX * ENTER_STEP_MS + 280;
+
+/** Verzögerung für Element `index` — oder `null`, wenn gerade nichts eingeht. */
+function enterDelayFor(active: boolean, index: number): number | null {
+  if (!active) return null;
+  return Math.min(index, ENTER_MAX_INDEX) * ENTER_STEP_MS;
+}
 
 export interface FocusRequest {
   id: string;
@@ -50,6 +66,13 @@ interface TimelineProps {
   onEntryDeleted: (id: string) => void;
   /** Hinweis, wenn der aktive Filter nichts übrig lässt. */
   emptyHint?: string | null;
+  /**
+   * Kennung des aktiven Filters. Ändert sie sich, kommen die Elemente kurz
+   * gestaffelt herein. Bewusst NICHT `entries`: ein per Realtime eintreffender
+   * Eintrag hat mit Kameraflug, Puls und Hinweis schon seine eigene
+   * Choreografie — der Rest der Tafel soll dabei ruhig bleiben.
+   */
+  filterKey: string;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -62,6 +85,7 @@ export default function Timeline({
   focus,
   onEntryDeleted,
   emptyHint,
+  filterKey,
 }: TimelineProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -80,6 +104,30 @@ export default function Timeline({
   const [selected, setSelected] = useState<Entry | null>(null);
   const [clusterEntries, setClusterEntries] = useState<Entry[] | null>(null);
   const [highlightId, setHighlightId] = useState<string | null>(null);
+
+  /*
+   * Wechselt der Filter, kommen die Elemente kurz gestaffelt herein. Der
+   * Zustand wird noch WÄHREND des Renderns angepasst, damit der erste
+   * sichtbare Frame schon der Startframe der Animation ist — sonst blitzt der
+   * Endzustand einmal auf.
+   *
+   * Nach `ENTER_WINDOW_MS` wird der Eingang wieder abgeschaltet. Das ist der
+   * entscheidende Teil: Marker, die später beim Pannen ins Bild rutschen,
+   * sollen NICHT animieren. Blockiert wird dabei nie etwas — die Elemente
+   * sind die ganze Zeit anklickbar.
+   */
+  const [enterKey, setEnterKey] = useState(filterKey);
+  const [entering, setEntering] = useState(true);
+  if (enterKey !== filterKey) {
+    setEnterKey(filterKey);
+    setEntering(true);
+  }
+
+  useEffect(() => {
+    if (!entering) return;
+    const timer = window.setTimeout(() => setEntering(false), ENTER_WINDOW_MS);
+    return () => window.clearTimeout(timer);
+  }, [entering, filterKey]);
 
   const { width, height } = size;
   const { k, x } = transform;
@@ -439,7 +487,7 @@ export default function Timeline({
                 now={now}
               />
 
-              {visibleMilestones.map((placement) => (
+              {visibleMilestones.map((placement, index) => (
                 <MilestoneCard
                   key={placement.item.id}
                   entry={placement.item}
@@ -449,11 +497,12 @@ export default function Timeline({
                   axisY={axisY}
                   layout={layout.milestone}
                   highlighted={highlightId === placement.item.id}
+                  enterDelay={enterDelayFor(entering, index)}
                   onSelect={handleSelect}
                 />
               ))}
 
-              {visibleMarkers.map((placement) => (
+              {visibleMarkers.map((placement, index) => (
                 <EntryMarker
                   key={placement.item.id}
                   entry={placement.item}
@@ -463,6 +512,7 @@ export default function Timeline({
                   height={height}
                   axisY={axisY}
                   highlighted={highlightId === placement.item.id}
+                  enterDelay={enterDelayFor(entering, index)}
                   onSelect={handleSelect}
                 />
               ))}
@@ -473,7 +523,7 @@ export default function Timeline({
                   type="button"
                   onClick={() => handleCluster(cluster)}
                   aria-label={`${cluster.entries.length} weitere Einträge — hineinzoomen`}
-                  className="absolute flex cursor-pointer items-center justify-center rounded-full bg-navy text-xs font-bold text-paper shadow-(--shadow-card) transition-colors hover:bg-navy-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+                  className="tl-cluster absolute flex items-center justify-center rounded-full bg-navy text-[11px] font-bold tracking-tight text-paper tabular-nums shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
                   style={{
                     left: cluster.left,
                     bottom: clusterBottom,
@@ -488,49 +538,106 @@ export default function Timeline({
           )}
         </div>
 
+        {/*
+          Weicher Rand: die Zeitfläche läuft nach links und rechts ins Papier
+          aus, statt Karten hart abzuschneiden. Liegt bewusst NEBEN dem
+          verschobenen Inhalt — es soll am Bildschirmrand kleben, nicht mitfahren.
+          Schmal gehalten, damit der „Heute“-Marker am rechten Rand der
+          Gesamtansicht nicht verblasst.
+        */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-6 bg-gradient-to-r from-paper to-paper/0 sm:w-10"
+        />
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-6 bg-gradient-to-l from-paper to-paper/0 sm:w-10"
+        />
+
         {emptyHint && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-            <p className="card px-4 py-3 text-sm text-coal-soft shadow-(--shadow-card)">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+            <p className="card animate-fade-up px-5 py-3.5 text-sm text-coal-soft shadow-(--shadow-card-lg)">
               {emptyHint}
             </p>
           </div>
         )}
 
         {/* Bedienhinweis */}
-        <p className="pointer-events-none absolute bottom-3 left-4 hidden text-xs text-coal-soft sm:block">
+        <p className="pointer-events-none absolute bottom-4 left-5 z-10 hidden text-[11px] text-coal-faint sm:block">
           Ziehen zum Verschieben · Scrollen oder Kneifen zum Zoomen
         </p>
 
-        {/* Schwebende Bedienelemente */}
+        {/* Schwebende Bedienleiste — ein Stück, klare Trennlinien */}
         <div
           data-no-zoom
           role="group"
           aria-label="Zoom"
-          className="card absolute right-4 bottom-4 z-20 flex flex-col gap-1 p-1.5"
+          className="card absolute right-3 bottom-3 z-20 flex flex-col overflow-hidden shadow-(--shadow-pop) sm:right-4 sm:bottom-4"
         >
           <button
             type="button"
             onClick={() => zoomByFactor(1.8)}
             aria-label="Hineinzoomen"
-            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-xl leading-none font-bold text-navy transition-colors hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+            className="tl-zoom-btn flex h-11 w-11 cursor-pointer items-center justify-center text-navy"
           >
-            +
+            <span aria-hidden="true" className="tl-zoom-btn__glyph">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path
+                  d="M9 3.6v10.8M3.6 9h10.8"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
           </button>
+
+          <span aria-hidden="true" className="h-px w-full bg-paper-line" />
+
           <button
             type="button"
             onClick={() => zoomByFactor(1 / 1.8)}
             aria-label="Herauszoomen"
-            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-xl leading-none font-bold text-navy transition-colors hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+            className="tl-zoom-btn flex h-11 w-11 cursor-pointer items-center justify-center text-navy"
           >
-            −
+            <span aria-hidden="true" className="tl-zoom-btn__glyph">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path
+                  d="M3.6 9h10.8"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
           </button>
+
+          <span aria-hidden="true" className="h-px w-full bg-paper-line" />
+
           <button
             type="button"
             onClick={resetZoom}
             aria-label="Gesamtansicht zeigen"
-            className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-[11px] font-bold text-navy transition-colors hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+            className="tl-zoom-btn flex h-11 w-11 cursor-pointer items-center justify-center text-navy"
           >
-            Alles
+            {/* Zwei Endmarken mit Doppelpfeil — „den ganzen Zeitraum zeigen“ */}
+            <span aria-hidden="true" className="tl-zoom-btn__glyph">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path
+                  d="M2.4 4.6v8.8M15.6 4.6v8.8"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M5.4 9h7.2M5.4 9l2.1-2.1M5.4 9l2.1 2.1M12.6 9l-2.1-2.1M12.6 9l-2.1 2.1"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
           </button>
         </div>
       </div>

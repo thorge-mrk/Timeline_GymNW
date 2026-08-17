@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import SchoolMark from "@/components/SchoolMark";
 import { nowYearFraction } from "@/lib/dates";
 import { timelineDomain } from "@/lib/timelinePosition";
 import type { Entry } from "@/lib/types";
@@ -13,9 +14,52 @@ import FilterBar, {
 } from "@/components/timeline/FilterBar";
 import RealtimeToast from "@/components/timeline/RealtimeToast";
 import Timeline, { type FocusRequest } from "@/components/timeline/Timeline";
+import "@/components/timeline/timeline.css";
 
 /** Nach dieser Ruhezeit gilt der Zeitstrahl als „unbenutzt" — dann fliegt die Kamera. */
 const IDLE_BEFORE_FLIGHT_MS = 3000;
+
+/** Breiten der Platzhalter-Marker — unregelmäßig, damit es nach Zeitstrahl aussieht. */
+const SKELETON_MARKERS = [86, 122, 96, 138, 92];
+
+/**
+ * Ladezustand: statt eines wirbelnden Rades schon die Form dessen zeigen, was
+ * gleich kommt — Marker über der Achse, Karten darunter. Animiert wird nur die
+ * Deckkraft, sehr langsam; das beruhigt, statt zu hetzen.
+ */
+function TimelineSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-7 p-6">
+      <div aria-hidden="true" className="w-full max-w-2xl">
+        <div className="flex items-end gap-3 pb-3.5">
+          {SKELETON_MARKERS.map((width, index) => (
+            <span
+              key={width}
+              className="tl-skel h-[26px] rounded-full border border-paper-line bg-paper-sunk"
+              style={{ width, animationDelay: `${index * 110}ms` }}
+            />
+          ))}
+        </div>
+
+        <span className="block h-[3px] w-full rounded-full bg-navy/15" />
+
+        <div className="mt-7 flex gap-3.5">
+          {[0, 1, 2].map((index) => (
+            <span
+              key={index}
+              className="tl-skel h-28 flex-1 rounded-2xl border border-paper-line bg-paper-card"
+              style={{ animationDelay: `${index * 140}ms` }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <p role="status" aria-live="polite" className="text-sm text-coal-soft">
+        Zeitstrahl wird geladen …
+      </p>
+    </div>
+  );
+}
 
 function matchesFilter(entry: Entry, filter: FilterState): boolean {
   if (filter.category === "alle") return true;
@@ -121,23 +165,37 @@ export default function Home() {
         onTouchStartCapture={noteInteraction}
       >
         {loading && entries.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center">
-            <span
-              role="status"
-              aria-label="Zeitstrahl wird geladen"
-              className="h-8 w-8 animate-spin rounded-full border-2 border-paper-line border-t-navy"
-            />
-          </div>
+          <TimelineSkeleton />
         ) : error && entries.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-6">
-            <div className="card max-w-md p-6 text-center">
-              <p className="font-semibold text-coal">
+            <div className="card animate-fade-up max-w-md p-8 text-center shadow-(--shadow-card-lg)">
+              <span
+                aria-hidden="true"
+                className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brick/10 text-brick"
+              >
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 7.5v5.5M12 16.6v.2"
+                    stroke="currentColor"
+                    strokeWidth="2.1"
+                    strokeLinecap="round"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                  />
+                </svg>
+              </span>
+              <p className="mt-5 text-base font-bold text-coal">
                 Der Zeitstrahl konnte nicht geladen werden.
               </p>
-              <p className="hint mt-1.5 break-words">{error}</p>
+              <p className="hint mt-2 break-words">{error}</p>
               <button
                 type="button"
-                className="btn-primary mt-4"
+                className="btn-primary mt-5"
                 onClick={() => void refetch()}
               >
                 Erneut versuchen
@@ -146,14 +204,24 @@ export default function Home() {
           </div>
         ) : entries.length === 0 ? (
           <div className="flex flex-1 items-center justify-center p-6">
-            <div className="card max-w-md p-6 text-center">
-              <p className="font-semibold text-coal">
+            <div className="card animate-fade-up max-w-md p-8 text-center shadow-(--shadow-card-lg)">
+              <span
+                aria-hidden="true"
+                className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-fox-soft"
+              >
+                <SchoolMark className="h-8 w-auto text-fox" />
+              </span>
+              <p className="mt-5 text-base font-bold text-coal">
                 Noch keine Einträge — die Geschichte beginnt bald!
               </p>
-              <p className="hint mt-1.5">
+              <p className="hint mt-2">
                 Sobald der erste Eintrag angelegt ist, erscheint er hier
                 automatisch.
               </p>
+              <span
+                aria-hidden="true"
+                className="mx-auto mt-6 block h-[2px] w-10 rounded-full bg-fox"
+              />
             </div>
           </div>
         ) : (
@@ -162,6 +230,7 @@ export default function Home() {
             domain={domain}
             focus={focus}
             onEntryDeleted={handleRemove}
+            filterKey={`${filter.category}:${filter.className ?? ""}`}
             emptyHint={
               filtered.length === 0
                 ? "Zu diesem Filter gibt es noch keine Einträge."
