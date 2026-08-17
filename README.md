@@ -125,22 +125,49 @@ where created_by in (
 
 ## 6. Accounts & Rollen
 
-**Es gibt bewusst keine Registrierung.** Niemand kann sich selbst einen Zugang anlegen.
-Accounts werden ausschließlich manuell im Supabase-Dashboard erstellt:
+**Konten entstehen ausschließlich per SQL — es gibt keinen anderen Weg.**
 
-1. Supabase-Dashboard → **Authentication → Users → „Add user“**
-2. E-Mail und Passwort eintragen, **„Auto Confirm“ aktivieren**
-   (sonst wartet der Account auf eine Bestätigungsmail)
-3. Danach die Rolle setzen — Dashboard → **SQL Editor**:
+Das ist in der Datenbank erzwungen (Migration `0007_accounts_only_via_sql.sql`): Ein
+Wächter-Trigger auf `auth.users` weist **jedes** Anlegen eines Kontos ab, das nicht aus
+der dafür vorgesehenen Funktion kommt. Damit sind alle Wege dicht — die öffentliche
+Registrierung, Magic Links, Einladungen und OAuth. Selbst wenn im Dashboard versehentlich
+der Schalter „Allow new users to sign up“ aktiviert wird, kann sich niemand ein Konto
+anlegen.
+
+### Konto anlegen
+
+Supabase-Dashboard → **SQL Editor**:
 
 ```sql
-update auth.users
-set raw_app_meta_data = raw_app_meta_data || '{"app_role":"admin"}'::jsonb
-where email = 'admin@beispiel.de';
+-- Rolle ist entweder 'admin' oder 'editor'; Passwort mindestens 12 Zeichen.
+select private.create_account('admin@gym-nw.de',    'hier-langes-passwort-einsetzen', 'admin');
+select private.create_account('eintrag1@gym-nw.de', 'hier-langes-passwort-einsetzen', 'editor');
+select private.create_account('eintrag2@gym-nw.de', 'hier-langes-passwort-einsetzen', 'editor');
+select private.create_account('eintrag3@gym-nw.de', 'hier-langes-passwort-einsetzen', 'editor');
+```
 
-update auth.users
-set raw_app_meta_data = raw_app_meta_data || '{"app_role":"editor"}'::jsonb
-where email = 'eintrag1@beispiel.de';
+Das Konto ist sofort einsatzbereit: E-Mail gilt als bestätigt, es wird **keine** Mail
+verschickt, die Rolle steckt direkt im Anmelde-Token.
+
+Passwörter mit einem Passwortmanager erzeugen und dort speichern — niemals per Mail oder
+Chat verschicken. Die Funktion weist Passwörter unter 12 Zeichen, ungültige Adressen und
+doppelte Konten von sich aus ab.
+
+### Konto verwalten
+
+```sql
+-- Passwort ändern
+select private.set_account_password('eintrag1@gym-nw.de', 'neues-langes-passwort');
+
+-- Rolle wechseln
+select private.set_account_role('eintrag1@gym-nw.de', 'admin');
+
+-- Konto löschen (Einträge der Person bleiben erhalten)
+select private.delete_account('eintrag3@gym-nw.de');
+
+-- Übersicht aller Konten
+select email, raw_app_meta_data->>'app_role' as rolle, last_sign_in_at
+from auth.users order by created_at;
 ```
 
 **Die beiden Rollen:**
@@ -154,21 +181,25 @@ where email = 'eintrag1@beispiel.de';
 > wieder anmelden**. Die Rolle steckt im signierten Anmelde-Token (JWT) und wird erst beim
 > nächsten Login neu ausgestellt.
 
+> **Wenn jemand versucht, sich selbst zu registrieren**, antwortet der Server mit einem
+> Fehler und es entsteht kein Konto. Das ist gewollt — die Anmeldeseite ist nur für die
+> Konten der Schule gedacht und bietet gar keine Registrierung an.
+
 ---
 
 ## 7. 🚀 Go-Live-Checkliste
 
-Diese Schritte bitte **in genau dieser Reihenfolge** abarbeiten — Schritt 3 sperrt die
-Registrierung, danach lassen sich Accounts nur noch über das Dashboard anlegen.
-
-1. **Echte Accounts anlegen** (1× `admin`, ca. 3× `editor`) und die Rollen setzen (SQL
-   siehe Abschnitt 6). Passwörter **mindestens 12 Zeichen**, erzeugt und gespeichert im
-   Passwortmanager der Schule — niemals per Mail oder Chat verschicken.
-2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL-Befehl aus Abschnitt 5),
-   danach im Dashboard die Nutzer `dev-admin@zeitstrahl-gymnw.de` und
-   `dev-editor@zeitstrahl-gymnw.de` löschen (Authentication → Users).
-3. **Registrierung deaktivieren:** Dashboard → **Authentication → Sign In / Providers** →
-   Schalter **„Allow new users to sign up“ AUS**.
+1. **Echte Accounts anlegen** (1× `admin`, ca. 3× `editor`) — per SQL, siehe Abschnitt 6.
+   Passwörter mindestens 12 Zeichen, erzeugt und gespeichert im Passwortmanager der Schule.
+2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL aus Abschnitt 5), dann:
+   ```sql
+   select private.delete_account('dev-admin@zeitstrahl-gymnw.de');
+   select private.delete_account('dev-editor@zeitstrahl-gymnw.de');
+   ```
+3. **Zusätzlich absichern (empfohlen):** Dashboard → **Authentication → Sign In / Providers**
+   → Schalter **„Allow new users to sign up“ AUS**. Die Datenbanksperre aus Abschnitt 6
+   greift auch ohne diesen Schalter — aber so bekommen Neugierige statt eines Serverfehlers
+   eine saubere Absage, und der Server spart sich die Arbeit.
 4. **Passwort-Mindestlänge auf 12 setzen:** Authentication → **Passwords**.
 5. **Site URL setzen:** Authentication → **URL Configuration** →
    `https://zeitstrahl-gymnw.de`.
@@ -271,6 +302,7 @@ Wer darf was?
 | Eintrag löschen | ✗ | ✗ | ✓ |
 | Meilenstein anlegen | ✗ | ✗ | ✓ |
 | Audio-Interview hochladen | ✗ | ✗ | ✓ |
+| **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |
 
 Diese Matrix ist **nicht** bloß eine Frage der Benutzeroberfläche, sondern wird in der
 Datenbank erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT)
