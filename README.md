@@ -33,7 +33,8 @@ dazu Open Sans und weiche Kartenschatten.
   Beim Hineinzoomen wird die Achse feiner: Jahrzehnte → Jahre → Monate. Gerendert wird
   nicht per CSS-Skalierung, sondern echt neu positioniert — Text bleibt in jeder Zoomstufe
   gestochen scharf.
-- **Meilensteine mit Bildern** — große Karten unterhalb der Achse, nur vom Admin gepflegt.
+- **Meilensteine mit Bildern** — große Karten unterhalb der Achse für die wichtigen
+  Ereignisse der Schulgeschichte.
 - **Kategorien + Klassen-Filter** — Filter-Chips für Schule, Schüler, Lehrer, Ehemalige,
   Sonstiges; bei „Schüler“ kann zusätzlich nach Klasse bzw. Jahrgang gefiltert werden
   („8a“, „Abi 1996“).
@@ -49,7 +50,7 @@ dazu Open Sans und weiche Kartenschatten.
   verkleinert und als WebP (Fallback JPEG) hochgeladen. Das spart Upload-Zeit im
   Schul-WLAN und hält den Speicherplatz klein.
 - **Audio-Interviews** — aufgenommene Gespräche mit Ehemaligen lassen sich anhören.
-  Hochladen darf sie ausschließlich der Admin.
+  Hochladen können sie alle angemeldeten Schul-Konten.
 
 ---
 
@@ -123,63 +124,62 @@ where created_by in (
 
 ---
 
-## 6. Accounts & Rollen
+## 6. Accounts
 
 **Konten entstehen ausschließlich per SQL — es gibt keinen anderen Weg.**
 
 Das ist in der Datenbank erzwungen (Migration `0007_accounts_only_via_sql.sql`): Ein
-Wächter-Trigger auf `auth.users` weist **jedes** Anlegen eines Kontos ab, das nicht aus
-der dafür vorgesehenen Funktion kommt. Damit sind alle Wege dicht — die öffentliche
-Registrierung, Magic Links, Einladungen und OAuth. Selbst wenn im Dashboard versehentlich
-der Schalter „Allow new users to sign up“ aktiviert wird, kann sich niemand ein Konto
-anlegen.
+Wächter auf der Nutzertabelle weist **jedes** Anlegen eines Kontos ab, das nicht aus der
+dafür vorgesehenen Funktion kommt. Damit sind alle Wege dicht — die öffentliche
+Registrierung, Magic Links, Einladungen, OAuth und auch der Knopf „Add user“ im
+Supabase-Dashboard. Selbst wenn im Dashboard versehentlich der Schalter „Allow new users
+to sign up“ aktiviert wird, kann sich niemand ein Konto anlegen.
+
+**Alle Konten sind gleichberechtigt.** Es gibt nur eine Rolle: Wer ein Konto hat, darf
+alles — Einträge anlegen, bearbeiten, löschen, Meilensteine setzen und Audio-Interviews
+hochladen. So können am Aktionstag mehrere Personen parallel arbeiten. Anonyme Besucher
+dürfen ausschließlich lesen.
 
 ### Konto anlegen
 
 Supabase-Dashboard → **SQL Editor**:
 
 ```sql
--- Rolle ist entweder 'admin' oder 'editor'; Passwort mindestens 12 Zeichen.
-select private.create_account('admin@gym-nw.de',    'hier-langes-passwort-einsetzen', 'admin');
-select private.create_account('eintrag1@gym-nw.de', 'hier-langes-passwort-einsetzen', 'editor');
-select private.create_account('eintrag2@gym-nw.de', 'hier-langes-passwort-einsetzen', 'editor');
-select private.create_account('eintrag3@gym-nw.de', 'hier-langes-passwort-einsetzen', 'editor');
+select * from private.create_account('vorname.name@gym-nw.de');
 ```
 
-Das Konto ist sofort einsatzbereit: E-Mail gilt als bestätigt, es wird **keine** Mail
-verschickt, die Rolle steckt direkt im Anmelde-Token.
+Das Ergebnis zeigt das automatisch erzeugte Passwort **ein einziges Mal**:
 
-Passwörter mit einem Passwortmanager erzeugen und dort speichern — niemals per Mail oder
-Chat verschicken. Die Funktion weist Passwörter unter 12 Zeichen, ungültige Adressen und
-doppelte Konten von sich aus ab.
+| konto | passwort | hinweis |
+| --- | --- | --- |
+| vorname.name@gym-nw.de | `TPwKKWCC87Tnjdsxefy` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
 
-### Konto verwalten
+Das Passwort ist 20 Zeichen lang, zufällig erzeugt und enthält keine verwechselbaren
+Zeichen (kein `0`/`O`, kein `1`/`l`/`I`) — es lässt sich also sicher abtippen oder
+vorlesen. Danach ist es nur noch verschlüsselt gespeichert und **kann nicht mehr
+ausgelesen werden**, auch nicht von der Schulverwaltung. Bitte sofort in den
+Passwortmanager der Schule übernehmen.
+
+Mehrere Konten auf einmal:
 
 ```sql
--- Passwort ändern
-select private.set_account_password('eintrag1@gym-nw.de', 'neues-langes-passwort');
-
--- Rolle wechseln
-select private.set_account_role('eintrag1@gym-nw.de', 'admin');
-
--- Konto löschen (Einträge der Person bleiben erhalten)
-select private.delete_account('eintrag3@gym-nw.de');
-
--- Übersicht aller Konten
-select email, raw_app_meta_data->>'app_role' as rolle, last_sign_in_at
-from auth.users order by created_at;
+select * from private.create_account('konto1@gym-nw.de');
+select * from private.create_account('konto2@gym-nw.de');
+select * from private.create_account('konto3@gym-nw.de');
 ```
 
-**Die beiden Rollen:**
+### Konten verwalten
 
-| Rolle | Darf |
-| --- | --- |
-| `admin` | alles: Einträge anlegen, **bearbeiten und löschen**, Meilensteine anlegen, Audio-Interviews hochladen |
-| `editor` | **nur neue Einträge anlegen** — die typische Rolle für die iPads am Aktionstag |
+```sql
+-- Neues Passwort erzeugen (wird wieder einmalig angezeigt)
+select * from private.reset_password('vorname.name@gym-nw.de');
 
-> **Wichtig:** Nach einer Rollen-Änderung muss sich der betroffene Account **einmal ab- und
-> wieder anmelden**. Die Rolle steckt im signierten Anmelde-Token (JWT) und wird erst beim
-> nächsten Login neu ausgestellt.
+-- Übersicht: wer hat ein Konto, wer war zuletzt angemeldet?
+select * from private.list_accounts();
+
+-- Konto löschen (die Einträge dieser Person bleiben erhalten)
+select private.delete_account('vorname.name@gym-nw.de');
+```
 
 > **Wenn jemand versucht, sich selbst zu registrieren**, antwortet der Server mit einem
 > Fehler und es entsteht kein Konto. Das ist gewollt — die Anmeldeseite ist nur für die
@@ -189,8 +189,10 @@ from auth.users order by created_at;
 
 ## 7. 🚀 Go-Live-Checkliste
 
-1. **Echte Accounts anlegen** (1× `admin`, ca. 3× `editor`) — per SQL, siehe Abschnitt 6.
-   Passwörter mindestens 12 Zeichen, erzeugt und gespeichert im Passwortmanager der Schule.
+1. **Echte Konten anlegen** — per SQL, siehe Abschnitt 6. Für jede Person, die am
+   Aktionstag eintragen soll, ein eigenes Konto (so ist nachvollziehbar, wer was
+   eingetragen hat). Die angezeigten Passwörter sofort in den Passwortmanager der Schule
+   übernehmen — sie lassen sich später nicht mehr auslesen.
 2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL aus Abschnitt 5), dann:
    ```sql
    select private.delete_account('dev-admin@zeitstrahl-gymnw.de');
@@ -294,15 +296,15 @@ sparsam zu sein.
 
 Wer darf was?
 
-| Aktion | anonyme Besucher | Eintrag-Account (`editor`) | Admin (`admin`) |
-| --- | :---: | :---: | :---: |
-| Einträge lesen | ✓ | ✓ | ✓ |
-| Eintrag erstellen | ✗ | ✓ | ✓ |
-| Eintrag bearbeiten | ✗ | ✗ | ✓ |
-| Eintrag löschen | ✗ | ✗ | ✓ |
-| Meilenstein anlegen | ✗ | ✗ | ✓ |
-| Audio-Interview hochladen | ✗ | ✗ | ✓ |
-| **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |
+| Aktion | anonyme Besucher | angemeldetes Schul-Konto |
+| --- | :---: | :---: |
+| Einträge lesen | ✓ | ✓ |
+| Eintrag erstellen | ✗ | ✓ |
+| Eintrag bearbeiten | ✗ | ✓ |
+| Eintrag löschen | ✗ | ✓ |
+| Meilenstein anlegen | ✗ | ✓ |
+| Audio-Interview hochladen | ✗ | ✓ |
+| **Konto anlegen** | ✗ | ✗ (nur per SQL im Dashboard) |
 
 Diese Matrix ist **nicht** bloß eine Frage der Benutzeroberfläche, sondern wird in der
 Datenbank erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT)
