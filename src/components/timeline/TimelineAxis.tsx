@@ -106,8 +106,8 @@ function TimelineAxis({
       />
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute -translate-x-1/2 rounded-full bg-fox px-2 py-0.5 text-[10px] font-bold text-navy shadow-(--shadow-card)"
-        style={{ left: todayX, top: 8 }}
+        className="pointer-events-none absolute -translate-x-full rounded-full bg-fox px-2 py-0.5 text-[10px] font-bold text-navy shadow-(--shadow-card)"
+        style={{ left: todayX - 6, top: 8 }}
       >
         Heute
       </span>

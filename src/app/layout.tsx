@@ -65,7 +65,9 @@ export default function RootLayout({
           </div>
         </header>
 
-        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {children}
+        </main>
 
         <footer className="border-t border-paper-line bg-paper-card">
           <div className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center justify-between gap-2 px-4 py-3 text-xs text-coal-soft sm:px-6">

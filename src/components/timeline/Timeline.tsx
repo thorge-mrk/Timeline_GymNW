@@ -497,7 +497,7 @@ export default function Timeline({
         )}
 
         {/* Bedienhinweis */}
-        <p className="pointer-events-none absolute bottom-3 left-4 text-xs text-coal-soft">
+        <p className="pointer-events-none absolute bottom-3 left-4 hidden text-xs text-coal-soft sm:block">
           Ziehen zum Verschieben · Scrollen oder Kneifen zum Zoomen
         </p>
 
