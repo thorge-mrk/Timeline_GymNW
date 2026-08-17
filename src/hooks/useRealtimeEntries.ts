@@ -14,6 +14,12 @@ export interface UseRealtimeEntriesOptions {
   onRemove: (id: string) => void;
   /** Zusätzlich bei frischen INSERTs (für Kameraflug / Toast). */
   onInserted?: (entry: Entry) => void;
+  /**
+   * Zusätzlich bei UPDATEs — für Ansichten, die wissen müssen, dass genau
+   * dieser Eintrag gerade von jemand anderem verändert wurde.
+   * Optional; wer nur eine Liste pflegt, braucht weiterhin nur `onUpsert`.
+   */
+  onUpdated?: (entry: Entry) => void;
 }
 
 /**
@@ -75,6 +81,7 @@ export function useRealtimeEntries(opts: UseRealtimeEntriesOptions): {
           const entry = toEntry(data);
           optsRef.current.onUpsert(entry);
           if (op === "insert") optsRef.current.onInserted?.(entry);
+          else if (op === "update") optsRef.current.onUpdated?.(entry);
         } else {
           // Keine Zeile mehr sichtbar → wirklich weg (oder nie sichtbar gewesen).
           optsRef.current.onRemove(id);

@@ -167,3 +167,54 @@
     background-color: var(--color-paper-sunk);
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Schwebender Live-Zähler (LiveEntriesBadge)
+ * Sitzt unten links — der Absende-Knopf steht rechts/unten und bleibt
+ * frei. Der Abstand nach unten hält die Fußzeile frei: deren Links sind
+ * 44 px hoch und rutschen auf schmalen Geräten in eine eigene Zeile.
+ * ------------------------------------------------------------------ */
+.live-badge {
+  position: fixed;
+  left: 1rem;
+  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  /* Rechts bleibt immer Platz: Der Absende-Knopf ist auf schmalen Geräten
+     volle Breite und muss antippbar bleiben. */
+  max-width: min(17rem, calc(100vw - 5rem));
+  /* Wichtig: Über dem Formular liegt keine unsichtbare Fläche — nur die
+     Pille selbst nimmt Zeigereingaben an. */
+  pointer-events: none;
+}
+@media (min-width: 40rem) {
+  .live-badge {
+    left: 1.5rem;
+    bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    max-width: min(19rem, calc(100vw - 3rem));
+  }
+}
+.live-badge__pill {
+  pointer-events: auto;
+}
+
+.live-badge__open,
+.live-badge__close {
+  transition:
+    background-color 140ms var(--ease-out-strong),
+    color 140ms var(--ease-out-strong),
+    transform 140ms var(--ease-out-strong);
+}
+.live-badge__open:active,
+.live-badge__close:active {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+@media (hover: hover) and (pointer: fine) {
+  .live-badge__open:hover,
+  .live-badge__close:hover {
+    background-color: var(--color-navy-soft);
+  }
+  .live-badge__close:hover {
+    color: var(--color-paper);
+  }
+}
