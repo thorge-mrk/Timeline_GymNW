@@ -67,6 +67,26 @@ function fileExt(name: string): string {
   return (parts.pop() ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Mikrofon-Symbol als Vektor — passend zum Kamera-Symbol beim Bild. */
+function MicIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-5 w-5 text-fox"
+    >
+      <path d="M12 3.4a2.7 2.7 0 0 0-2.7 2.7v5.2a2.7 2.7 0 0 0 5.4 0V6.1A2.7 2.7 0 0 0 12 3.4Z" />
+      <path d="M5.9 11.1a6.1 6.1 0 0 0 12.2 0" />
+      <path d="M12 17.2v3.3" />
+    </svg>
+  );
+}
+
 function resolveMime(file: File): string | null {
   const ext = fileExt(file.name);
   const raw = file.type.toLowerCase().split(";")[0].trim();
@@ -152,22 +172,32 @@ export function AudioUpload({
           disabled={disabled}
           onClick={() => inputRef.current?.click()}
         >
-          🎙️ Audiodatei auswählen
+          <MicIcon />
+          Audiodatei auswählen
         </button>
       )}
 
       {(value || showExisting) && (
-        <div className="rounded-2xl border border-paper-line bg-paper p-3">
-          <p className="text-sm font-semibold break-all text-coal">
-            {value ? value.file.name : "Bereits gespeichertes Audio-Interview"}
+        <div className="animate-fade-up rounded-2xl border border-paper-line bg-paper-sunk p-3">
+          <p className="flex items-start gap-2 text-sm font-semibold break-all text-coal">
+            <span className="mt-px shrink-0">
+              <MicIcon />
+            </span>
+            <span className="min-w-0">
+              {value ? value.file.name : "Bereits gespeichertes Audio-Interview"}
+            </span>
           </p>
-          {value && <p className="hint">{formatBytes(value.file.size)}</p>}
+          {value && (
+            <p className="mt-1 text-xs text-coal-faint">
+              {formatBytes(value.file.size)}
+            </p>
+          )}
 
           <audio
             controls
             preload="metadata"
             src={value ? (previewUrl ?? undefined) : (existingUrl ?? undefined)}
-            className="mt-3 w-full"
+            className="mt-3 w-full rounded-xl"
           >
             Dein Browser kann diese Audiodatei nicht abspielen.
           </audio>
@@ -183,7 +213,7 @@ export function AudioUpload({
             </button>
             <button
               type="button"
-              className="btn-ghost min-h-11 text-[#b3402a]"
+              className="btn-ghost btn-quiet min-h-11"
               disabled={disabled}
               onClick={() => {
                 setError(null);
@@ -198,12 +228,15 @@ export function AudioUpload({
       )}
 
       {error && (
-        <p role="alert" className="mt-2 text-xs font-semibold text-[#b3402a]">
+        <p
+          role="alert"
+          className="note-enter mt-2 text-xs font-semibold text-ink-bad"
+        >
           {error}
         </p>
       )}
 
-      <p className="hint mt-2">
+      <p className="hint mt-2 leading-relaxed">
         Nur der Admin-Account kann Audio-Interviews hochladen. Max. 25 MB (MP3,
         M4A, AAC, WAV oder WebM).
       </p>

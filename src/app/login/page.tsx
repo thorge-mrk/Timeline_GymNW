@@ -85,16 +85,32 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center p-4 sm:p-8">
+    <div className="flex flex-1 items-center justify-center px-4 py-10 sm:px-8 sm:py-12">
       <div className="w-full max-w-sm">
+        {/* Das vollständige Rund-Signet der Schule — hier darf es groß sein. */}
+        <div className="animate-fade-up mb-5 flex justify-center">
+          {/* Kein next/image — die Seite wird statisch exportiert. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-gymnw.png"
+            alt="Gymnasium Neu Wulmstorf"
+            width={840}
+            height={800}
+            className="h-14 w-auto"
+          />
+        </div>
+
         <form
           noValidate
           onSubmit={(e) => void handleSubmit(e)}
-          className="card animate-fade-up space-y-5 p-6"
+          style={{ animationDelay: "60ms" }}
+          className="card animate-fade-up space-y-6 p-6 shadow-(--shadow-card-lg) sm:p-7"
         >
           <div>
-            <h1 className="text-xl font-bold text-coal">Anmelden</h1>
-            <p className="hint mt-1.5">
+            <h1 className="text-xl font-bold tracking-tight text-coal">
+              Anmelden
+            </h1>
+            <p className="hint mt-1.5 leading-relaxed">
               Nur für Accounts der Schule — es gibt keine öffentliche
               Registrierung.
             </p>
@@ -103,9 +119,22 @@ export default function LoginPage() {
           {error && (
             <div
               role="alert"
-              className="rounded-2xl border border-[#b3402a]/40 bg-[#fbeeea] p-3.5 text-sm font-semibold text-[#8f3423]"
+              className="animate-pop-in flex items-start gap-2.5 rounded-2xl border border-brick/25 bg-brick/8 p-3.5 text-sm font-semibold text-ink-bad"
             >
-              {error}
+              <svg
+                aria-hidden
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.7}
+                strokeLinecap="round"
+                className="mt-px h-4.5 w-4.5 shrink-0"
+              >
+                <circle cx="10" cy="10" r="7.6" />
+                <path d="M10 6.1v4.6" />
+                <path d="M10 13.6h.01" />
+              </svg>
+              <span>{error}</span>
             </div>
           )}
 
@@ -155,15 +184,18 @@ export default function LoginPage() {
             {busy && (
               <span
                 aria-hidden
-                className="h-4 w-4 animate-spin rounded-full border-2 border-paper/30 border-t-paper"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-paper/30 border-t-paper [animation-duration:0.72s]"
               />
             )}
-            {busy ? "Anmelden …" : "Anmelden"}
+            {busy ? "Wird angemeldet …" : "Anmelden"}
           </button>
         </form>
 
-        <p className="mt-4 text-center">
-          <Link href="/" className="hint hover:text-coal">
+        <p
+          style={{ animationDelay: "120ms" }}
+          className="animate-fade-up mt-5 text-center"
+        >
+          <Link href="/" className="hint link-quiet">
             ← Zurück zum Zeitstrahl
           </Link>
         </p>

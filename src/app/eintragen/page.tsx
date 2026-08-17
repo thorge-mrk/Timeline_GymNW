@@ -97,16 +97,16 @@ function EintragenView() {
   if (!isContributor) {
     return (
       <Shell>
-        <div className="card animate-fade-up p-6">
-          <h1 className="text-lg font-bold text-coal">
+        <div className="card animate-fade-up p-6 shadow-(--shadow-card-lg) sm:p-7">
+          <h1 className="text-lg font-bold tracking-tight text-coal">
             Dieses Konto hat keine Schreibrechte für den Zeitstrahl.
           </h1>
-          <p className="mt-2 text-sm text-coal-soft">
+          <p className="mt-2 max-w-prose text-sm leading-relaxed text-coal-soft">
             Zum Eintragen braucht es ein Konto mit der Rolle „Eintrag“ oder
             „Admin“. Bitte beim Schul-Team melden.
           </p>
           <p className="hint mt-3">Angemeldet als {email}</p>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap gap-2.5">
             <button
               type="button"
               className="btn-primary min-h-12"
@@ -126,15 +126,15 @@ function EintragenView() {
   if (editId && !isAdmin) {
     return (
       <Shell>
-        <div className="card animate-fade-up p-6">
-          <h1 className="text-lg font-bold text-coal">
+        <div className="card animate-fade-up p-6 shadow-(--shadow-card-lg) sm:p-7">
+          <h1 className="text-lg font-bold tracking-tight text-coal">
             Bearbeiten ist nur mit dem Admin-Konto möglich.
           </h1>
-          <p className="mt-2 text-sm text-coal-soft">
+          <p className="mt-2 max-w-prose text-sm leading-relaxed text-coal-soft">
             Mit diesem Konto lassen sich neue Erinnerungen anlegen — Änderungen
             an bestehenden Einträgen macht das Admin-Konto.
           </p>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap gap-2.5">
             <Link href="/eintragen/" className="btn-accent min-h-12">
               Neuen Eintrag anlegen
             </Link>
@@ -154,18 +154,21 @@ function EintragenView() {
   if (editId && (loadState === "missing" || loadState === "error")) {
     return (
       <Shell>
-        <div className="card animate-fade-up p-6">
-          <h1 className="text-lg font-bold text-coal">
+        <div className="card animate-fade-up p-6 shadow-(--shadow-card-lg) sm:p-7">
+          <h1 className="text-lg font-bold tracking-tight text-coal">
             {loadState === "missing"
               ? "Diesen Eintrag gibt es nicht (mehr)."
               : "Der Eintrag konnte nicht geladen werden."}
           </h1>
           {loadError && (
-            <p role="alert" className="mt-2 text-sm text-coal-soft">
+            <p
+              role="alert"
+              className="mt-2 max-w-prose text-sm leading-relaxed text-coal-soft"
+            >
               {loadError}
             </p>
           )}
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap gap-2.5">
             <Link href="/eintragen/" className="btn-accent min-h-12">
               Neuen Eintrag anlegen
             </Link>
@@ -182,18 +185,23 @@ function EintragenView() {
 
   return (
     <Shell>
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-coal">
+      <header className="animate-fade-up mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+            Gedächtnis der Zeit
+          </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-coal">
             {editing ? "Eintrag bearbeiten" : "Neuer Eintrag"}
           </h1>
-          <p className="hint mt-1.5">
-            Angemeldet als {email} · Rolle: {isAdmin ? "Admin" : "Eintrag"}
+          <p className="hint mt-1.5 leading-relaxed">
+            Angemeldet als <span className="font-semibold">{email}</span>
+            <span className="text-coal-faint"> · </span>
+            Rolle: {isAdmin ? "Admin" : "Eintrag"}
           </p>
         </div>
         <button
           type="button"
-          className="btn-ghost min-h-11"
+          className="btn-ghost min-h-11 shrink-0"
           onClick={() => void handleSignOut()}
         >
           Abmelden

@@ -1,0 +1,169 @@
+/*
+ * Ergänzung zum Design-System aus globals.css.
+ * Hier steht ausschließlich das, was sich mit Tailwind-Utilities nicht sauber
+ * ausdrücken lässt: eigene Übergangskurven, gestapelte Zustände ohne
+ * Layout-Sprung und Hover-Effekte, die nur auf echten Zeigergeräten laufen.
+ * Es werden nur die Tokens aus globals.css verwendet — keine neuen Farben.
+ */
+
+:root {
+  /* Moss und Brick als Textfarbe: mit Coal abgedunkelt, damit auch 12-px-Text
+     auf hellem Papier sicher lesbar bleibt (Kontrast > 4,5:1). */
+  --ink-ok: color-mix(in srgb, var(--color-moss) 62%, var(--color-coal));
+  --ink-bad: color-mix(in srgb, var(--color-brick) 88%, var(--color-coal));
+}
+
+/* ------------------------------------------------------------------ *
+ * Kopfzeile — das Signet reagiert minimal, aber nur auf Zeigergeräten
+ * ------------------------------------------------------------------ */
+.brand-mark {
+  transition: transform 160ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .brand-link:hover .brand-mark {
+    transform: translateY(-1px) scale(1.06);
+  }
+}
+.brand-link:active .brand-mark {
+  transform: scale(0.94);
+}
+
+/* ------------------------------------------------------------------ *
+ * Fußzeile — ruhige Links mit großzügiger Tippfläche
+ * ------------------------------------------------------------------ */
+.link-quiet {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 0.375rem;
+  border-radius: 0.5rem;
+  color: var(--color-coal-soft);
+  transition: color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .link-quiet:hover {
+    color: var(--color-coal);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Hinweiszeilen unter Feldern
+ * Alle Zustände liegen in derselben Rasterzelle übereinander. Dadurch
+ * steht die Höhe von Anfang an fest — beim Wechsel zuckt nichts.
+ * ------------------------------------------------------------------ */
+.note-slot {
+  display: grid;
+  align-items: center;
+  min-height: 2.5rem;
+}
+.note-line {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  opacity: 0;
+  transform: translateY(-3px);
+  /* Verlassen ist schneller als Erscheinen. */
+  transition:
+    opacity 120ms var(--ease-out-strong),
+    transform 120ms var(--ease-out-strong);
+}
+.note-line[data-on="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  transition-duration: 160ms;
+}
+.note-line > svg {
+  flex: none;
+}
+
+.note-line--ok {
+  color: var(--ink-ok);
+  border-color: color-mix(in srgb, var(--color-moss) 30%, transparent);
+  background-color: color-mix(in srgb, var(--color-moss) 9%, transparent);
+}
+.note-line--bad {
+  color: var(--ink-bad);
+  border-color: color-mix(in srgb, var(--color-brick) 26%, transparent);
+  background-color: color-mix(in srgb, var(--color-brick) 7%, transparent);
+}
+.note-line--calm {
+  color: var(--color-coal-faint);
+}
+
+/* Kurzer Fehlerhinweis, der neu in den (reservierten) Platz einrückt. */
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.note-enter {
+  animation: note-in 160ms var(--ease-out-strong) both;
+}
+
+.text-ink-bad {
+  color: var(--ink-bad);
+}
+
+/* ------------------------------------------------------------------ *
+ * Zurückhaltender Entfernen-Knopf: in Ruhe unsichtbar, beim Zeigen
+ * bekennt er Farbe. (Ergänzt .btn-ghost, deshalb bewusst ohne @layer —
+ * so gewinnt er gegen die Utilities.)
+ * ------------------------------------------------------------------ */
+.btn-quiet {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--ink-bad);
+}
+@media (hover: hover) and (pointer: fine) {
+  .btn-quiet:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-brick) 25%, transparent);
+    background-color: color-mix(in srgb, var(--color-brick) 7%, transparent);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Ablagefläche für Bilder
+ * ------------------------------------------------------------------ */
+.dropzone {
+  transition:
+    border-color 160ms var(--ease-out-strong),
+    background-color 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+.dropzone:active:not(:disabled) {
+  transform: scale(0.985);
+}
+@media (hover: hover) and (pointer: fine) {
+  .dropzone:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-fox) 70%, transparent);
+    background-color: color-mix(in srgb, var(--color-fox-soft) 55%, transparent);
+  }
+}
+/* Beim Drüberziehen gewinnt die Fuchs-Fläche — Regel steht bewusst zuletzt. */
+.dropzone[data-drag="true"]:not(:disabled) {
+  border-color: var(--color-fox);
+  background-color: var(--color-fox-soft);
+}
+
+/* ------------------------------------------------------------------ *
+ * Kategorie-Chips: der aktive Chip bekommt seine Farbe per style-Attribut,
+ * hier nur die gemeinsame Ruhe (Ring statt Sprung).
+ * ------------------------------------------------------------------ */
+.chip-choice[data-on="true"] {
+  box-shadow: var(--shadow-card);
+}
+@media (hover: hover) and (pointer: fine) {
+  .chip-choice[data-on="false"]:not([data-locked="true"]):hover {
+    border-color: color-mix(in srgb, var(--color-coal-soft) 40%, transparent);
+    background-color: var(--color-paper-sunk);
+  }
+}

@@ -24,6 +24,25 @@ interface ImageUploadProps {
 
 const ERR_NOT_AN_IMAGE = "Bitte eine Bilddatei auswählen (z. B. JPG oder PNG).";
 
+/** Kamera-Symbol — als Vektor, damit es in jeder Größe scharf bleibt. */
+function CameraIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-7 w-7 text-fox"
+    >
+      <path d="M3 9.2A2.4 2.4 0 0 1 5.4 6.8h1.3a1.6 1.6 0 0 0 1.35-.74l.7-1.1a1.6 1.6 0 0 1 1.35-.74h3.8a1.6 1.6 0 0 1 1.35.74l.7 1.1a1.6 1.6 0 0 0 1.35.74h1.3A2.4 2.4 0 0 1 21 9.2v7.4a2.4 2.4 0 0 1-2.4 2.4H5.4A2.4 2.4 0 0 1 3 16.6z" />
+      <circle cx="12" cy="12.6" r="3.6" />
+    </svg>
+  );
+}
+
 export function ImageUpload({
   value,
   onChange,
@@ -112,6 +131,7 @@ export function ImageUpload({
           type="button"
           onClick={openPicker}
           disabled={disabled || busy}
+          data-drag={dragging}
           onDragOver={(e) => {
             e.preventDefault();
             if (!disabled && !busy) setDragging(true);
@@ -123,32 +143,25 @@ export function ImageUpload({
             if (disabled || busy) return;
             void handleFile(e.dataTransfer.files?.[0]);
           }}
-          className={`flex min-h-32 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition-colors
+          className="dropzone flex min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-paper-line bg-paper px-4 py-7 text-center
             focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox
-            disabled:cursor-not-allowed disabled:opacity-60
-            ${
-              dragging
-                ? "border-fox bg-fox/5"
-                : "border-paper-line bg-paper hover:border-fox"
-            }`}
+            disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? (
             <span className="inline-flex items-center gap-2 text-sm text-coal-soft">
               <span
                 aria-hidden
-                className="h-4 w-4 animate-spin rounded-full border-2 border-paper-line border-t-fox"
+                className="h-4 w-4 animate-spin rounded-full border-2 border-paper-line border-t-fox [animation-duration:0.72s]"
               />
               Bild wird verarbeitet …
             </span>
           ) : (
             <>
-              <span aria-hidden className="text-2xl">
-                🖼️
-              </span>
+              <CameraIcon />
               <span className="text-sm font-semibold text-coal">
                 Foto auswählen
               </span>
-              <span className="hint">
+              <span className="text-xs text-coal-faint">
                 oder Datei einfach hierher ziehen · JPG oder PNG
               </span>
             </>
@@ -157,7 +170,7 @@ export function ImageUpload({
       )}
 
       {(value || showExisting) && (
-        <div className="rounded-2xl border border-paper-line bg-paper p-3">
+        <div className="animate-fade-up rounded-2xl border border-paper-line bg-paper-sunk p-3">
           {shownUrl ? (
             // Kein next/image — die Seite wird statisch exportiert.
             // eslint-disable-next-line @next/next/no-img-element
@@ -168,7 +181,7 @@ export function ImageUpload({
                   ? "Vorschau des ausgewählten Bildes"
                   : "Aktuell gespeichertes Bild"
               }
-              className="max-h-64 w-full rounded-xl bg-paper-card object-contain"
+              className="max-h-64 w-full rounded-xl bg-paper-card object-contain shadow-(--shadow-card)"
             />
           ) : (
             <div className="flex h-32 items-center justify-center rounded-xl bg-paper-card">
@@ -176,11 +189,14 @@ export function ImageUpload({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="hint">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <p className="min-w-0 text-xs leading-relaxed break-words text-coal-faint">
               {value ? (
                 <>
-                  {value.originalName} · komprimiert:{" "}
+                  <span className="font-semibold text-coal-soft">
+                    {value.originalName}
+                  </span>
+                  {" · komprimiert: "}
                   {formatBytes(value.blob.size)}
                   {value.originalSize > value.blob.size && (
                     <> (vorher {formatBytes(value.originalSize)})</>
@@ -202,7 +218,7 @@ export function ImageUpload({
               </button>
               <button
                 type="button"
-                className="btn-ghost min-h-11 text-[#b3402a]"
+                className="btn-ghost btn-quiet min-h-11"
                 disabled={disabled || busy}
                 onClick={() => {
                   setError(null);
@@ -218,12 +234,15 @@ export function ImageUpload({
       )}
 
       {error && (
-        <p role="alert" className="mt-2 text-xs font-semibold text-[#b3402a]">
+        <p
+          role="alert"
+          className="note-enter mt-2 text-xs font-semibold text-ink-bad"
+        >
           {error}
         </p>
       )}
 
-      <p className="hint mt-2">
+      <p className="hint mt-2 leading-relaxed">
         Wird automatisch verkleinert (max. 1600 px) — Querformat wirkt auf dem
         Zeitstrahl am besten.
       </p>

@@ -15,7 +15,7 @@ export function Spinner({ label, className = "" }: SpinnerProps) {
     >
       <span
         aria-hidden
-        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-paper-line border-t-fox"
+        className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-paper-line border-t-fox [animation-duration:0.72s]"
       />
       {label ? <span>{label}</span> : <span className="sr-only">Lädt …</span>}
     </span>

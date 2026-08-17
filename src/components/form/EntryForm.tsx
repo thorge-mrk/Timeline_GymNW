@@ -41,14 +41,82 @@ function entryDateText(e: Pick<Entry, "year" | "month" | "day">): string {
 /** Lesbare Schriftfarbe auf der Kategoriefarbe (Orange braucht dunklen Text). */
 function readableOn(hex: string): string {
   const h = hex.replace("#", "");
-  if (h.length !== 6) return "#f8f5ef";
+  if (h.length !== 6) return "var(--color-paper)";
   const toLinear = (v: number) =>
     v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
   const r = toLinear(parseInt(h.slice(0, 2), 16) / 255);
   const g = toLinear(parseInt(h.slice(2, 4), 16) / 255);
   const b = toLinear(parseInt(h.slice(4, 6), 16) / 255);
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.45 ? "#0b1338" : "#f8f5ef";
+  return luminance > 0.45 ? "var(--color-navy)" : "var(--color-paper)";
+}
+
+/** Abschnittsüberschrift: klein, in Versalien, ruhig — nur zur Orientierung. */
+function Section({
+  title,
+  first = false,
+  children,
+}: {
+  title: string;
+  first?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={first ? undefined : "border-t border-paper-line pt-7"}>
+      <h2 className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+        {title}
+      </h2>
+      <div className="mt-4 space-y-6">{children}</div>
+    </section>
+  );
+}
+
+function CheckIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="m4.6 10.4 3.4 3.4 7.4-7.6" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      className="mt-px h-4.5 w-4.5 shrink-0"
+    >
+      <circle cx="10" cy="10" r="7.6" />
+      <path d="M10 6.1v4.6" />
+      <path d="M10 13.6h.01" />
+    </svg>
+  );
+}
+
+function StarIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className="h-4 w-4 shrink-0 text-fox"
+    >
+      <path d="M12 3.6l2.42 4.9 5.41.79-3.92 3.82.93 5.39L12 15.95l-4.84 2.55.93-5.39L4.17 9.29l5.41-.79z" />
+    </svg>
+  );
 }
 
 const NETWORK_MESSAGE =
@@ -344,14 +412,23 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
       <div
         role="status"
         aria-live="polite"
-        className="card animate-fade-up border-[#3f7a45]/40 bg-[#eef4e9] p-6 text-center sm:p-8"
+        className="card animate-pop-in border-moss/30 bg-moss/8 p-7 text-center shadow-(--shadow-card-lg) sm:p-9"
       >
-        <p className="text-lg font-bold text-[#2f6b3a]">
-          {saved === "created"
-            ? "✓ Gespeichert! Der Eintrag ist jetzt live auf dem Zeitstrahl."
-            : "✓ Gespeichert! Die Änderungen sind jetzt auf dem Zeitstrahl."}
+        <span
+          aria-hidden
+          className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-moss text-paper shadow-(--shadow-card)"
+        >
+          <CheckIcon className="h-7 w-7" />
+        </span>
+        <p className="mt-5 text-xl font-bold tracking-tight text-coal">
+          Gespeichert!
         </p>
-        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:justify-center">
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-coal-soft">
+          {saved === "created"
+            ? "Der Eintrag ist jetzt live auf dem Zeitstrahl — danke fürs Erinnern."
+            : "Die Änderungen sind jetzt auf dem Zeitstrahl."}
+        </p>
+        <div className="mt-7 flex flex-col gap-2.5 sm:flex-row sm:justify-center">
           {saved === "created" ? (
             <button
               type="button"
@@ -392,109 +469,128 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
     <form
       noValidate
       onSubmit={(e) => void handleSubmit(e)}
-      className="card animate-fade-up space-y-7 p-5 sm:p-7"
+      className="card animate-fade-up space-y-8 p-5 shadow-(--shadow-card-lg) sm:p-7"
     >
       {error && (
         <div
           role="alert"
-          className="rounded-2xl border border-[#b3402a]/40 bg-[#fbeeea] p-4 text-sm font-semibold text-[#8f3423]"
+          className="animate-pop-in flex items-start gap-2.5 rounded-2xl border border-brick/25 bg-brick/8 p-4 text-sm font-semibold text-ink-bad"
         >
-          {error}
+          <AlertIcon />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* 1 — Titel */}
-      <div>
-        <div className="flex items-baseline justify-between gap-3">
-          <label className="label" htmlFor="entry-title">
-            Titel <span aria-hidden className="text-fox">*</span>
-            <span className="sr-only">(Pflichtfeld)</span>
-          </label>
-          <span aria-hidden className="hint tabular-nums">
-            noch {TITLE_MAX - title.length}
-          </span>
-        </div>
-        <input
-          id="entry-title"
-          ref={titleRef}
-          type="text"
-          className="input min-h-12"
-          placeholder="z. B. Einweihung der neuen Sporthalle"
-          maxLength={TITLE_MAX}
-          value={title}
-          disabled={busy}
-          aria-required="true"
-          aria-invalid={titleMissing}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        {titleMissing && (
-          <p role="alert" className="mt-1.5 text-xs font-semibold text-[#b3402a]">
-            Bitte einen Titel eingeben.
-          </p>
-        )}
-      </div>
-
-      {/* 2 — Datum */}
-      <SmartDateInput
-        id={DATE_INPUT_ID}
-        value={dateText}
-        onChange={setDateText}
-        disabled={busy}
-        showRequiredError={triedSubmit}
-      />
-
-      {/* 3 — Kategorie */}
-      <div>
-        <span className="label" id="entry-category-label">
-          Kategorie <span aria-hidden className="text-fox">*</span>
-        </span>
-        <div
-          role="radiogroup"
-          aria-labelledby="entry-category-label"
-          className="flex flex-wrap gap-2"
-        >
-          {CATEGORIES.map((c) => {
-            const active = category === c.id;
-            const fg = readableOn(c.color);
-            return (
-              <label
-                key={c.id}
-                title={c.description}
-                className={`chip min-h-11 px-4 py-2.5 text-sm
-                  has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-fox ${
-                    active
-                      ? "border-transparent"
-                      : "border-paper-line bg-paper-card text-coal hover:border-coal-soft/40"
-                  } ${busy ? "cursor-not-allowed opacity-60" : ""}`}
-                style={
-                  active
-                    ? { backgroundColor: c.color, borderColor: c.color, color: fg }
-                    : undefined
-                }
+      <Section title="Die Erinnerung" first>
+        {/* 1 — Titel */}
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            <label className="label" htmlFor="entry-title">
+              Titel <span aria-hidden className="font-bold text-fox-deep">*</span>
+              <span className="sr-only">(Pflichtfeld)</span>
+            </label>
+            <span aria-hidden className="hint tabular-nums">
+              noch {TITLE_MAX - title.length}
+            </span>
+          </div>
+          <input
+            id="entry-title"
+            ref={titleRef}
+            type="text"
+            className="input min-h-12"
+            placeholder="z. B. Einweihung der neuen Sporthalle"
+            maxLength={TITLE_MAX}
+            value={title}
+            disabled={busy}
+            aria-required="true"
+            aria-invalid={titleMissing}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          {/* Platz ist reserviert — die Meldung schiebt nichts nach unten. */}
+          <div className="mt-1.5 min-h-4.5">
+            {titleMissing && (
+              <p
+                role="alert"
+                className="note-enter text-xs font-semibold text-ink-bad"
               >
-                <input
-                  type="radio"
-                  name="entry-category"
-                  value={c.id}
-                  className="sr-only"
-                  checked={active}
-                  disabled={busy}
-                  onChange={() => setCategory(c.id)}
-                />
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: active ? fg : c.color }}
-                />
-                {c.label}
-              </label>
-            );
-          })}
+                Bitte einen Titel eingeben.
+              </p>
+            )}
+          </div>
         </div>
-        <p className="hint mt-2">{categoryById(category).description}</p>
+
+        {/* 2 — Datum */}
+        <SmartDateInput
+          id={DATE_INPUT_ID}
+          value={dateText}
+          onChange={setDateText}
+          disabled={busy}
+          showRequiredError={triedSubmit}
+        />
+      </Section>
+
+      <Section title="Einordnung">
+        {/* 3 — Kategorie */}
+        <div>
+          <span className="label" id="entry-category-label">
+            Kategorie <span aria-hidden className="font-bold text-fox-deep">*</span>
+          </span>
+          <div
+            role="radiogroup"
+            aria-labelledby="entry-category-label"
+            className="flex flex-wrap gap-2.5"
+          >
+            {CATEGORIES.map((c) => {
+              const active = category === c.id;
+              const fg = readableOn(c.color);
+              return (
+                <label
+                  key={c.id}
+                  title={c.description}
+                  data-on={active}
+                  data-locked={busy}
+                  className={`chip chip-choice min-h-11 px-4 py-2.5 text-sm
+                    has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-fox ${
+                      active
+                        ? "border-transparent"
+                        : "border-paper-line bg-paper-card text-coal"
+                    } ${busy ? "cursor-not-allowed opacity-60" : ""}`}
+                  style={
+                    active
+                      ? {
+                          backgroundColor: c.color,
+                          borderColor: c.color,
+                          color: fg,
+                        }
+                      : undefined
+                  }
+                >
+                  <input
+                    type="radio"
+                    name="entry-category"
+                    value={c.id}
+                    className="sr-only"
+                    checked={active}
+                    disabled={busy}
+                    onChange={() => setCategory(c.id)}
+                  />
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: active ? fg : c.color }}
+                  />
+                  {c.label}
+                </label>
+              );
+            })}
+          </div>
+          <p className="hint mt-2.5 leading-relaxed">
+            {categoryById(category).description}
+          </p>
+        </div>
 
         {isAdmin && (
-          <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-paper-line bg-paper p-3">
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-paper-line bg-paper-sunk p-3.5">
             <input
               type="checkbox"
               className="mt-0.5 h-5 w-5 shrink-0 accent-fox"
@@ -503,134 +599,145 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
               onChange={(e) => setIsMilestone(e.target.checked)}
             />
             <span className="text-sm">
-              <span className="block font-semibold text-coal">
-                ⭐ Als Meilenstein hervorheben
+              <span className="flex items-center gap-1.5 font-semibold text-coal">
+                <StarIcon />
+                Als Meilenstein hervorheben
               </span>
-              <span className="hint">
+              <span className="hint mt-0.5 block">
                 Große Karte mit Bild auf dem Zeitstrahl.
               </span>
             </span>
           </label>
         )}
-      </div>
 
-      {/* 4 — Klasse (nur bei Schüler/Ehemalige) */}
-      {showClassField && (
+        {/* 4 — Klasse (nur bei Schüler/Ehemalige) */}
+        {showClassField && (
+          <div className="animate-fade-up">
+            <label className="label" htmlFor="entry-class">
+              Klasse
+            </label>
+            <input
+              id="entry-class"
+              type="text"
+              className="input min-h-12"
+              placeholder="z. B. 8a oder Abi 1996"
+              maxLength={CLASS_MAX}
+              value={className}
+              disabled={busy}
+              onChange={(e) => setClassName(e.target.value)}
+            />
+            <p className="hint mt-1.5">
+              Optional — damit lässt sich später nach Jahrgängen filtern.
+            </p>
+          </div>
+        )}
+      </Section>
+
+      <Section title="Erzählung">
+        {/* 5 — Autor */}
         <div>
-          <label className="label" htmlFor="entry-class">
-            Klasse
+          <label className="label" htmlFor="entry-author">
+            Wer erinnert sich?
           </label>
           <input
-            id="entry-class"
+            id="entry-author"
             type="text"
             className="input min-h-12"
-            placeholder="z. B. 8a oder Abi 1996"
-            maxLength={CLASS_MAX}
-            value={className}
+            placeholder="z. B. Maria K., Abi 1998"
+            maxLength={AUTHOR_MAX}
+            autoComplete="name"
+            value={authorName}
             disabled={busy}
-            onChange={(e) => setClassName(e.target.value)}
+            onChange={(e) => setAuthorName(e.target.value)}
           />
-          <p className="hint mt-1">
-            Optional — damit lässt sich später nach Jahrgängen filtern.
+          <p className="hint mt-1.5">
+            Optional — der Name steht später an der Erinnerung.
           </p>
         </div>
-      )}
 
-      {/* 5 — Autor */}
-      <div>
-        <label className="label" htmlFor="entry-author">
-          Wer erinnert sich?
-        </label>
-        <input
-          id="entry-author"
-          type="text"
-          className="input min-h-12"
-          placeholder="z. B. Maria K., Abi 1998"
-          maxLength={AUTHOR_MAX}
-          autoComplete="name"
-          value={authorName}
-          disabled={busy}
-          onChange={(e) => setAuthorName(e.target.value)}
-        />
-        <p className="hint mt-1">
-          Optional — der Name steht später an der Erinnerung.
-        </p>
-      </div>
-
-      {/* 6 — Beschreibung */}
-      <div>
-        <div className="flex items-baseline justify-between gap-3">
-          <label className="label" htmlFor="entry-description">
-            Beschreibung
-          </label>
-          <span aria-hidden className="hint tabular-nums">
-            noch {DESCRIPTION_MAX - description.length}
-          </span>
+        {/* 6 — Beschreibung */}
+        <div>
+          <div className="flex items-baseline justify-between gap-3">
+            <label className="label" htmlFor="entry-description">
+              Beschreibung
+            </label>
+            <span aria-hidden className="hint tabular-nums">
+              noch {DESCRIPTION_MAX - description.length}
+            </span>
+          </div>
+          <textarea
+            id="entry-description"
+            rows={5}
+            className="input resize-y leading-relaxed"
+            placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
+            maxLength={DESCRIPTION_MAX}
+            value={description}
+            disabled={busy}
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </div>
-        <textarea
-          id="entry-description"
-          rows={5}
-          className="input resize-y leading-relaxed"
-          placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
-          maxLength={DESCRIPTION_MAX}
-          value={description}
-          disabled={busy}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </div>
+      </Section>
 
-      {/* 7 — Bild */}
-      <ImageUpload
-        value={image}
-        onChange={setImage}
-        existingUrl={existingImageUrl}
-        onRemoveExisting={() => setKeepImagePath(null)}
-        disabled={busy}
-      />
-
-      {/* 8 — Audio (nur Admin) */}
-      {isAdmin && (
-        <AudioUpload
-          value={audio}
-          onChange={setAudio}
-          existingUrl={existingAudioUrl}
-          onRemoveExisting={() => setKeepAudioPath(null)}
+      <Section title="Bild & Ton">
+        {/* 7 — Bild */}
+        <ImageUpload
+          value={image}
+          onChange={setImage}
+          existingUrl={existingImageUrl}
+          onRemoveExisting={() => setKeepImagePath(null)}
           disabled={busy}
         />
-      )}
+
+        {/* 8 — Audio (nur Admin) */}
+        {isAdmin && (
+          <AudioUpload
+            value={audio}
+            onChange={setAudio}
+            existingUrl={existingAudioUrl}
+            onRemoveExisting={() => setKeepAudioPath(null)}
+            disabled={busy}
+          />
+        )}
+      </Section>
 
       {/* Absenden */}
-      <div className="border-t border-paper-line pt-6">
+      <div className="border-t border-paper-line pt-7">
         <button
           type="submit"
-          className="btn-accent min-h-14 w-full text-base sm:w-auto sm:px-10"
+          className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
           disabled={busy}
         >
           {busy && phase !== "deleting" && (
             <span
               aria-hidden
-              className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy"
+              className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
             />
           )}
           {submitLabel}
         </button>
-        <p className="hint mt-2.5">
-          Mit <span className="text-fox">*</span> markierte Felder sind
-          Pflichtfelder.
+        <p className="hint mt-3">
+          Mit <span className="font-bold text-fox-deep">*</span> markierte Felder
+          sind Pflichtfelder.
         </p>
       </div>
 
       {isEdit && isAdmin && (
-        <div className="border-t border-paper-line pt-6">
+        <div className="border-t border-paper-line pt-7">
           <button
             type="button"
             className="btn-danger min-h-12"
             disabled={busy}
             onClick={() => void handleDelete()}
           >
+            {phase === "deleting" && (
+              <span
+                aria-hidden
+                className="h-4 w-4 animate-spin rounded-full border-2 border-paper/30 border-t-paper [animation-duration:0.72s]"
+              />
+            )}
             {phase === "deleting" ? "Wird gelöscht …" : "Eintrag löschen"}
           </button>
-          <p className="hint mt-2.5">
+          <p className="hint mt-3">
             Löscht den Eintrag samt Bild und Audio dauerhaft.
           </p>
         </div>
