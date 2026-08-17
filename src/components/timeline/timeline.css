@@ -1,0 +1,326 @@
+/*
+ * Feinschliff für den Zeitstrahl.
+ *
+ * Hier steht ausschließlich, was Tailwind-Utilities nicht sauber ausdrücken
+ * können: Hover hinter `(hover: hover) and (pointer: fine)`, Keyframes mit
+ * eigenem Ein- UND Ausgang sowie Zustände, die per `data-state` gesteuert
+ * werden. Animiert werden nur `transform` und `opacity` — nie `all`.
+ *
+ * Kurven (aus globals.css):
+ *   --ease-out-strong     Ein-/Ausgänge
+ *   --ease-in-out-strong  Bewegung auf dem Schirm
+ *   --ease-drawer         weiches Einfahren von unten
+ *
+ * Die Klassen sind absichtlich zweistufig spezifisch (.klasse:hover = 0,2,0),
+ * damit sie unabhängig von der Ladereihenfolge über den Tailwind-Utilities
+ * liegen.
+ */
+
+/* ========================================================================== */
+/*  Marker über der Achse                                                     */
+/* ========================================================================== */
+
+.tl-marker {
+  transition:
+    transform 160ms var(--ease-out-strong),
+    box-shadow 160ms var(--ease-out-strong),
+    border-color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-marker:hover {
+    /* Minimal — die Karte hebt sich, sie springt nicht. */
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-card-lg);
+    border-color: color-mix(in srgb, var(--color-fox) 55%, var(--color-paper-line));
+  }
+}
+
+/* Nach der Hover-Regel notiert, damit der Druck sie überschreibt. */
+.tl-marker:active {
+  transform: scale(0.98);
+  transition-duration: 100ms;
+}
+
+/* Angeflogener Eintrag: feiner Fuchs-Ring statt lauter Farbfläche. */
+.tl-marker--active {
+  border-color: var(--color-fox);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
+    var(--shadow-card);
+}
+
+/* ========================================================================== */
+/*  Meilenstein-Karten unter der Achse                                        */
+/* ========================================================================== */
+
+.tl-milestone {
+  transition:
+    transform 180ms var(--ease-out-strong),
+    box-shadow 180ms var(--ease-out-strong),
+    border-color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-milestone:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-lg);
+    border-color: color-mix(in srgb, var(--color-fox) 45%, var(--color-paper-line));
+  }
+}
+
+.tl-milestone:active {
+  transform: scale(0.985);
+  transition-duration: 110ms;
+}
+
+.tl-milestone--active {
+  border-color: var(--color-fox);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
+    var(--shadow-card-lg);
+}
+
+/* ========================================================================== */
+/*  Cluster-Badge „+N“                                                        */
+/* ========================================================================== */
+
+.tl-cluster {
+  cursor: zoom-in;
+  transition:
+    transform 140ms var(--ease-out-strong),
+    background-color 140ms ease,
+    box-shadow 140ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-cluster:hover {
+    transform: scale(1.08);
+    background-color: var(--color-navy-soft);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--color-fox) 45%, transparent),
+      var(--shadow-card-lg);
+  }
+}
+
+.tl-cluster:active {
+  transform: scale(0.96);
+  transition-duration: 100ms;
+}
+
+/* ========================================================================== */
+/*  Zoom-Leiste                                                               */
+/* ========================================================================== */
+
+.tl-zoom-btn {
+  transition: background-color 140ms ease;
+}
+
+/* Der Druck wirkt auf das Icon, nicht auf die Taste — sonst reißt die Leiste
+   an den Trennlinien auf. Kein Ein-/Ausgang: die Tasten werden oft benutzt. */
+.tl-zoom-btn__glyph {
+  display: flex;
+  transition: transform 120ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-zoom-btn:hover {
+    background-color: var(--color-paper-sunk);
+  }
+}
+
+.tl-zoom-btn:active .tl-zoom-btn__glyph {
+  transform: scale(0.88);
+}
+
+/* Der globale Fokusring rundet Buttons ab; in der beschnittenen Leiste stört
+   das. Fokus bleibt sichtbar, nur eben bündig. */
+.tl-zoom-btn:focus-visible {
+  border-radius: 0;
+  outline: 2px solid var(--color-fox);
+  outline-offset: -3px;
+}
+
+/* ========================================================================== */
+/*  Runde Icon-Taste (Modal schließen, Toast schließen)                       */
+/* ========================================================================== */
+
+.tl-iconbtn {
+  transition:
+    transform 140ms var(--ease-out-strong),
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.tl-iconbtn:active {
+  transform: scale(0.9);
+  transition-duration: 100ms;
+}
+
+/* ========================================================================== */
+/*  Modal — Eingang 220 ms, Ausgang 150 ms (schneller als der Eingang)        */
+/* ========================================================================== */
+
+@keyframes tl-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes tl-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes tl-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes tl-modal-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+.tl-backdrop {
+  animation: tl-backdrop-in 200ms var(--ease-out-strong) both;
+}
+.tl-backdrop[data-state="closing"] {
+  animation: tl-backdrop-out 140ms var(--ease-out-strong) both;
+}
+
+.tl-modal {
+  /* Ein Modal hängt an keinem Auslöser — es wächst aus seiner Mitte. */
+  transform-origin: center;
+  animation: tl-modal-in 220ms var(--ease-out-strong) both;
+}
+.tl-modal[data-state="closing"] {
+  animation: tl-modal-out 150ms var(--ease-out-strong) both;
+}
+
+/* ========================================================================== */
+/*  Realtime-Hinweis — kommt von unten, geht nach unten (räumlich stimmig)    */
+/* ========================================================================== */
+
+@keyframes tl-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(100% + 16px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tl-toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(100% + 16px));
+  }
+}
+
+.tl-toast {
+  animation: tl-toast-in 320ms var(--ease-drawer) both;
+}
+.tl-toast[data-state="closing"] {
+  animation: tl-toast-out 200ms var(--ease-out-strong) both;
+}
+
+/* ========================================================================== */
+/*  Gestaffelter Eingang nach Filterwechsel                                   */
+/* ========================================================================== */
+
+@keyframes tl-enter-marker {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes tl-enter-card {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/*
+ * `backwards` statt `both`: nach dem Lauf gilt wieder der normale Zustand,
+ * die Hover-Transition der Karte bleibt also unangetastet. Die Verzögerung
+ * kommt inline und ist auf ~12 Elemente gedeckelt.
+ */
+.tl-enter-marker {
+  animation: tl-enter-marker 200ms var(--ease-out-strong) backwards;
+}
+.tl-enter-card {
+  animation: tl-enter-card 220ms var(--ease-out-strong) backwards;
+}
+
+/* ========================================================================== */
+/*  Ladezustand                                                               */
+/* ========================================================================== */
+
+@keyframes tl-breathe {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
+.tl-skel {
+  animation: tl-breathe 1500ms var(--ease-in-out-strong) infinite alternate;
+}
+
+/* ========================================================================== */
+/*  Reduzierte Bewegung                                                       */
+/* ========================================================================== */
+
+/*
+ * globals.css kürzt bereits alle Dauern. Hier fällt zusätzlich die
+ * Ortsveränderung weg — Deckkraft und Farbe bleiben, sie erklären etwas.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .tl-marker:hover,
+  .tl-marker:active,
+  .tl-milestone:hover,
+  .tl-milestone:active,
+  .tl-cluster:hover,
+  .tl-cluster:active,
+  .tl-iconbtn:active,
+  .tl-zoom-btn:active .tl-zoom-btn__glyph {
+    transform: none;
+  }
+
+  .tl-skel {
+    opacity: 0.7;
+  }
+}

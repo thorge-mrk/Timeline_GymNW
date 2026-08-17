@@ -1,0 +1,14 @@
+# Abhängigkeiten & Build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Lokales (niemals committen)
+.env.local
+.env*.local
+.dev-accounts*
+
+# System
+.DS_Store

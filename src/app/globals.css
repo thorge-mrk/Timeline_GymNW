@@ -1,0 +1,225 @@
+@import "tailwindcss";
+
+/*
+ * Design-Tokens — Farben direkt aus dem offiziellen Schul-Logo extrahiert:
+ *   Fuchs-Orange #F49231 und Navy #060B28 (gym-nw.de, Pixel-genau gemessen).
+ * Dazu warmes Papier statt Weiß und Coal statt Schwarz.
+ */
+@theme {
+  --color-paper: #f7f4ed;
+  --color-paper-card: #fffdf9;
+  --color-paper-sunk: #f1ece1;
+  --color-paper-line: #e6e0d3;
+  --color-coal: #27272a;
+  --color-coal-soft: #57565c;
+  --color-coal-faint: #8b8a88;
+  --color-navy: #060b28;
+  --color-navy-soft: #141c3d;
+  --color-navy-line: #26304f;
+  --color-fox: #f49231;
+  --color-fox-deep: #d97918;
+  --color-fox-soft: #fdf0e1;
+  --color-petrol: #15779b;
+  --color-moss: #6e8b3d;
+  --color-brick: #b3402a;
+
+  --font-sans: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
+
+  /* Kräftige Kurven — die CSS-Standardkurven wirken zu weich. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --shadow-card:
+    0 1px 2px rgb(6 11 40 / 0.05), 0 4px 12px -4px rgb(6 11 40 / 0.08);
+  --shadow-card-lg:
+    0 2px 4px rgb(6 11 40 / 0.06), 0 14px 34px -10px rgb(6 11 40 / 0.18);
+  --shadow-pop:
+    0 8px 24px -6px rgb(6 11 40 / 0.16), 0 30px 60px -20px rgb(6 11 40 / 0.28);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-coal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-fox) 32%, transparent);
+}
+
+/* Sichtbarer, markentreuer Fokusring — überall gleich. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-fox);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-paper-line bg-paper-card shadow-(--shadow-card);
+  }
+
+  /* Basis aller Buttons: reagiert sofort auf den Druck (scale 0.97). */
+  .btn,
+  .btn-primary,
+  .btn-accent,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5
+      text-sm font-semibold select-none
+      disabled:cursor-not-allowed disabled:opacity-50;
+    transition:
+      background-color 160ms var(--ease-out-strong),
+      border-color 160ms var(--ease-out-strong),
+      color 160ms var(--ease-out-strong),
+      box-shadow 160ms var(--ease-out-strong),
+      transform 160ms var(--ease-out-strong);
+  }
+  .btn:active:not(:disabled),
+  .btn-primary:active:not(:disabled),
+  .btn-accent:active:not(:disabled),
+  .btn-ghost:active:not(:disabled),
+  .btn-danger:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .btn-primary {
+    @apply bg-navy text-paper;
+  }
+  .btn-accent {
+    @apply bg-fox text-navy;
+  }
+  .btn-ghost {
+    @apply border border-paper-line bg-paper-card text-coal;
+  }
+  .btn-danger {
+    @apply bg-brick text-paper;
+  }
+
+  /* Hover nur auf Geräten mit echtem Zeiger — sonst „klebt“ er nach dem Tippen. */
+  @media (hover: hover) and (pointer: fine) {
+    .btn-primary:hover:not(:disabled) {
+      @apply bg-navy-soft;
+    }
+    .btn-accent:hover:not(:disabled) {
+      @apply bg-fox-deep;
+    }
+    .btn-ghost:hover:not(:disabled) {
+      @apply border-coal-soft/35 bg-paper-sunk;
+    }
+    .btn-danger:hover:not(:disabled) {
+      @apply bg-[#9a3524];
+    }
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-paper-line bg-paper-card px-3.5 py-2.5 text-sm
+      text-coal placeholder:text-coal-soft/55;
+    transition:
+      border-color 160ms var(--ease-out-strong),
+      box-shadow 160ms var(--ease-out-strong);
+  }
+  .input:focus {
+    @apply border-fox outline-none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-fox) 22%, transparent);
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-semibold text-coal;
+  }
+  .hint {
+    @apply text-xs text-coal-soft;
+  }
+
+  .chip {
+    @apply inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5
+      text-xs font-semibold select-none;
+    transition:
+      background-color 160ms var(--ease-out-strong),
+      border-color 160ms var(--ease-out-strong),
+      color 160ms var(--ease-out-strong),
+      transform 160ms var(--ease-out-strong);
+  }
+  .chip:active {
+    transform: scale(0.97);
+  }
+}
+
+/*
+ * Bewegung. Enter-Animationen starten nie bei scale(0) — nichts erscheint
+ * in der echten Welt aus dem Nichts.
+ */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-fox) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 16px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes slide-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.3s var(--ease-out-strong) 3;
+}
+.animate-fade-up {
+  animation: fade-up 260ms var(--ease-out-strong) both;
+}
+.animate-pop-in {
+  animation: pop-in 200ms var(--ease-out-strong) both;
+}
+.animate-slide-up-in {
+  animation: slide-up-in 320ms var(--ease-drawer) both;
+}
+
+/* Reduzierte Bewegung: Farbe und Deckkraft bleiben, Bewegung geht. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
