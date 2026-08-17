@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+/*
+ * Design-Tokens — abgeleitet von www.gym-nw.de (Fuchs-Logo + Custom-CSS):
+ *   Papier-Weiß statt Weiß, Coal statt Schwarz, Schul-Navy, Schul-Orange („fox").
+ */
+@theme {
+  --color-paper: #f8f5ef;
+  --color-paper-card: #fcfaf6;
+  --color-paper-line: #e8e2d6;
+  --color-coal: #27272a;
+  --color-coal-soft: #55555a;
+  --color-navy: #0b1338;
+  --color-navy-deep: #0a1241;
+  --color-fox: #f6921e;
+  --color-petrol: #15779b;
+
+  --font-sans: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-card: 0 1px 2px rgb(39 39 42 / 0.06), 0 6px 20px -6px rgb(39 39 42 / 0.12);
+  --shadow-card-lg: 0 2px 4px rgb(39 39 42 / 0.08), 0 16px 40px -12px rgb(39 39 42 / 0.22);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-coal);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-fox) 30%, transparent);
+}
+
+/* Gemeinsame Bausteine, damit alle Seiten identisch aussehen */
+@layer components {
+  .card {
+    @apply bg-paper-card border border-paper-line rounded-2xl shadow-(--shadow-card);
+  }
+
+  .btn,
+  .btn-primary,
+  .btn-accent,
+  .btn-ghost,
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+      transition-colors duration-150 cursor-pointer select-none
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox
+      disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply bg-navy text-paper hover:bg-navy-deep;
+  }
+  .btn-accent {
+    @apply bg-fox text-navy hover:bg-[#e58312];
+  }
+  .btn-ghost {
+    @apply bg-transparent text-coal border border-paper-line hover:bg-paper-card hover:border-coal-soft/40;
+  }
+  .btn-danger {
+    @apply bg-[#b3402a] text-paper hover:bg-[#9a3524];
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-paper-line bg-paper-card px-3.5 py-2.5 text-sm text-coal
+      placeholder:text-coal-soft/60 transition-colors
+      focus:outline-none focus:border-fox focus:ring-2 focus:ring-fox/25;
+  }
+  .label {
+    @apply block text-sm font-semibold text-coal mb-1.5;
+  }
+  .hint {
+    @apply text-xs text-coal-soft;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold
+      cursor-pointer select-none transition-colors duration-150
+      focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox;
+  }
+}
+
+/* Sanfte Animationen (Realtime-Einträge, Modals) */
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-fox) 55%, transparent); }
+  70% { box-shadow: 0 0 0 18px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-pulse-ring { animation: pulse-ring 1.4s ease-out 3; }
+.animate-fade-up { animation: fade-up 0.25s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-ring, .animate-fade-up { animation: none; }
+}
