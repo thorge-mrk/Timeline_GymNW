@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  EditConflictNotice,
+  type EditConflict,
+} from "@/components/form/EditConflictNotice";
 import { EntryForm } from "@/components/form/EntryForm";
+import { LiveEntriesBadge } from "@/components/form/LiveEntriesBadge";
 import { PageSpinner } from "@/components/form/Spinner";
 import { useAuth } from "@/hooks/useAuth";
+import { useRealtimeEntries } from "@/hooks/useRealtimeEntries";
 import { categoryById } from "@/lib/categories";
 import { supabase } from "@/lib/supabase";
 import type { Entry } from "@/lib/types";
@@ -33,6 +39,15 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 type LoadState = "idle" | "loading" | "ready" | "missing" | "error";
 
+/**
+ * Das eigene Speichern kommt als Broadcast zurück. Ein Update am bearbeiteten
+ * Eintrag innerhalb dieses Fensters gilt deshalb als eigenes Echo — sonst
+ * meldete die Seite „jemand anderes hat geändert“ für die eigene Änderung.
+ * Der Broadcast-Weg (Nachricht abwarten, Zeile RLS-geprüft nachladen) braucht
+ * immer länger als die Antwort auf den eigenen Schreibvorgang.
+ */
+const SELF_ECHO_MS = 5000;
+
 function EintragenView() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -43,13 +58,24 @@ function EintragenView() {
   const [entry, setEntry] = useState<Entry | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Zählt die „Neu laden“-Klicks — lädt den Eintrag und baut das Formular neu. */
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  /** Live: Einträge anderer Leute, die seit dem Öffnen dieser Seite dazukamen. */
+  const [liveCount, setLiveCount] = useState(0);
+  const [liveTitle, setLiveTitle] = useState<string | null>(null);
+  /** Live: Konflikt am gerade bearbeiteten Eintrag. */
+  const [conflict, setConflict] = useState<EditConflict | null>(null);
+
+  /** Zeitpunkt des letzten eigenen Schreibvorgangs — siehe SELF_ECHO_MS. */
+  const lastSelfWriteRef = useRef(0);
 
   // Guard: ohne Session zurück zur Anmeldung.
   useEffect(() => {
     if (!loading && !session) router.replace("/login/");
   }, [loading, session, router]);
 
-  // Bearbeiten-Modus: vorhandenen Eintrag laden.
+  // Bearbeiten-Modus: vorhandenen Eintrag laden (auch erneut nach „Neu laden“).
   useEffect(() => {
     if (!editId || !userId || !isAdmin) return;
     let active = true;
@@ -82,7 +108,70 @@ function EintragenView() {
     return () => {
       active = false;
     };
-  }, [editId, userId, isAdmin]);
+  }, [editId, userId, isAdmin, reloadNonce]);
+
+  /*
+   * Live-Aktualisierung. Der Zeitstrahl-State liegt auf der Startseite — hier
+   * wird nichts gespiegelt: gezählt wird über onInserted, Konflikte am eigenen
+   * Eintrag laufen über onUpdated (geändert) und onRemove (gelöscht).
+   */
+  const handleUpsert = useCallback(() => {}, []);
+
+  const handleInserted = useCallback(
+    (fresh: Entry) => {
+      // Der eigene, gerade gespeicherte Eintrag zählt nicht mit.
+      if (userId && fresh.created_by === userId) return;
+      setLiveCount((current) => current + 1);
+      setLiveTitle(fresh.title);
+    },
+    [userId]
+  );
+
+  const handleUpdated = useCallback(
+    (fresh: Entry) => {
+      if (!editId || fresh.id !== editId) return;
+      if (Date.now() - lastSelfWriteRef.current < SELF_ECHO_MS) return;
+      // „gelöscht“ ist endgültig und bleibt stehen.
+      setConflict((current) => (current === "deleted" ? current : "changed"));
+    },
+    [editId]
+  );
+
+  const handleRemove = useCallback(
+    (id: string) => {
+      if (!editId || id !== editId) return;
+      setConflict("deleted");
+    },
+    [editId]
+  );
+
+  useRealtimeEntries({
+    onUpsert: handleUpsert,
+    onRemove: handleRemove,
+    onInserted: handleInserted,
+    onUpdated: handleUpdated,
+  });
+
+  /** Merkt sich den eigenen Schreibvorgang, damit das Echo stumm bleibt. */
+  const handleSaved = useCallback((kind: "created" | "updated") => {
+    lastSelfWriteRef.current = Date.now();
+    if (kind === "updated") {
+      setConflict((current) => (current === "changed" ? null : current));
+    }
+  }, []);
+
+  /** Bewusster Klick auf „Neu laden“: fremde Fassung holen, Formular neu bauen. */
+  const handleReload = useCallback(() => {
+    setConflict(null);
+    setReloadNonce((current) => current + 1);
+  }, []);
+
+  const dismissLive = useCallback(() => {
+    setLiveCount(0);
+    setLiveTitle(null);
+  }, []);
+
+  const dismissConflict = useCallback(() => setConflict(null), []);
 
   async function handleSignOut() {
     await signOut();
@@ -208,11 +297,27 @@ function EintragenView() {
         </button>
       </header>
 
+      {editing && conflict && (
+        <EditConflictNotice
+          kind={conflict}
+          onReload={handleReload}
+          onDismiss={dismissConflict}
+        />
+      )}
+
       <EntryForm
-        key={editing && entry ? entry.id : "neu"}
+        key={editing && entry ? `${entry.id}:${reloadNonce}` : "neu"}
         session={session}
         isAdmin={isAdmin}
         entry={editing ? entry : null}
+        removed={editing && conflict === "deleted"}
+        onSaved={handleSaved}
+      />
+
+      <LiveEntriesBadge
+        count={liveCount}
+        latestTitle={liveTitle}
+        onDismiss={dismissLive}
       />
     </Shell>
   );

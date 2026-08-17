@@ -33,7 +33,8 @@ dazu Open Sans und weiche Kartenschatten.
   Beim Hineinzoomen wird die Achse feiner: Jahrzehnte → Jahre → Monate. Gerendert wird
   nicht per CSS-Skalierung, sondern echt neu positioniert — Text bleibt in jeder Zoomstufe
   gestochen scharf.
-- **Meilensteine mit Bildern** — große Karten unterhalb der Achse, nur vom Admin gepflegt.
+- **Meilensteine mit Bildern** — große Karten unterhalb der Achse für die wichtigen
+  Ereignisse der Schulgeschichte, gepflegt über ein Admin-Konto.
 - **Kategorien + Klassen-Filter** — Filter-Chips für Schule, Schüler, Lehrer, Ehemalige,
   Sonstiges; bei „Schüler“ kann zusätzlich nach Klasse bzw. Jahrgang gefiltert werden
   („8a“, „Abi 1996“).
@@ -49,7 +50,7 @@ dazu Open Sans und weiche Kartenschatten.
   verkleinert und als WebP (Fallback JPEG) hochgeladen. Das spart Upload-Zeit im
   Schul-WLAN und hält den Speicherplatz klein.
 - **Audio-Interviews** — aufgenommene Gespräche mit Ehemaligen lassen sich anhören.
-  Hochladen darf sie ausschließlich der Admin.
+  Hochladen kann sie ein Admin-Konto.
 
 ---
 
@@ -125,50 +126,89 @@ where created_by in (
 
 ## 6. Accounts & Rollen
 
-**Es gibt bewusst keine Registrierung.** Niemand kann sich selbst einen Zugang anlegen.
-Accounts werden ausschließlich manuell im Supabase-Dashboard erstellt:
+**Konten entstehen ausschließlich per SQL — es gibt keinen anderen Weg.**
 
-1. Supabase-Dashboard → **Authentication → Users → „Add user“**
-2. E-Mail und Passwort eintragen, **„Auto Confirm“ aktivieren**
-   (sonst wartet der Account auf eine Bestätigungsmail)
-3. Danach die Rolle setzen — Dashboard → **SQL Editor**:
+Das ist in der Datenbank erzwungen (Migration `0007_accounts_only_via_sql.sql`): Ein
+Wächter auf der Nutzertabelle weist **jedes** Anlegen eines Kontos ab, das nicht aus der
+dafür vorgesehenen Funktion kommt. Damit sind alle Wege dicht — die öffentliche
+Registrierung, Magic Links, Einladungen, OAuth und auch der Knopf „Add user“ im
+Supabase-Dashboard. Selbst wenn im Dashboard versehentlich der Schalter „Allow new users
+to sign up“ aktiviert wird, kann sich niemand ein Konto anlegen.
 
-```sql
-update auth.users
-set raw_app_meta_data = raw_app_meta_data || '{"app_role":"admin"}'::jsonb
-where email = 'admin@beispiel.de';
-
-update auth.users
-set raw_app_meta_data = raw_app_meta_data || '{"app_role":"editor"}'::jsonb
-where email = 'eintrag1@beispiel.de';
-```
-
-**Die beiden Rollen:**
+### Die zwei Rollen
 
 | Rolle | Darf |
 | --- | --- |
-| `admin` | alles: Einträge anlegen, **bearbeiten und löschen**, Meilensteine anlegen, Audio-Interviews hochladen |
-| `editor` | **nur neue Einträge anlegen** — die typische Rolle für die iPads am Aktionstag |
+| `admin` | **alles**: Einträge anlegen, **bearbeiten und löschen**, Meilensteine setzen, Audio-Interviews hochladen |
+| `editor` | **nur neue Einträge anlegen** — die Rolle für die iPads am Aktionstag |
 
-> **Wichtig:** Nach einer Rollen-Änderung muss sich der betroffene Account **einmal ab- und
-> wieder anmelden**. Die Rolle steckt im signierten Anmelde-Token (JWT) und wird erst beim
-> nächsten Login neu ausgestellt.
+Es kann mehrere Konten jeder Rolle geben. Anonyme Besucher dürfen ausschließlich lesen.
+
+### Konto anlegen
+
+Supabase-Dashboard → **SQL Editor**. Die Rolle muss **bewusst** angegeben werden, damit
+niemand versehentlich zu viele Rechte bekommt:
+
+```sql
+select * from private.create_account('schulleitung@gym-nw.de', 'admin');
+select * from private.create_account('ipad1@gym-nw.de',        'editor');
+select * from private.create_account('ipad2@gym-nw.de',        'editor');
+select * from private.create_account('ipad3@gym-nw.de',        'editor');
+```
+
+Das Ergebnis zeigt das automatisch erzeugte Passwort **ein einziges Mal**:
+
+| konto | rolle | passwort | hinweis |
+| --- | --- | --- | --- |
+| ipad1@gym-nw.de | editor | `YGz87AKn6QRos2ecaLCb` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
+
+Das Passwort ist 20 Zeichen lang, zufällig erzeugt und enthält keine verwechselbaren
+Zeichen (kein `0`/`O`, kein `1`/`l`/`I`) — es lässt sich also sicher abtippen oder
+vorlesen. Danach ist es nur noch verschlüsselt gespeichert und **kann nicht mehr
+ausgelesen werden**, auch nicht von der Schulverwaltung. Bitte sofort in den
+Passwortmanager der Schule übernehmen.
+
+### Konten verwalten
+
+```sql
+-- Übersicht: wer hat ein Konto, welche Rolle, wer war zuletzt angemeldet?
+select * from private.list_accounts();
+
+-- Neues Passwort erzeugen (wird wieder einmalig angezeigt)
+select * from private.reset_password('ipad1@gym-nw.de');
+
+-- Rolle wechseln
+select private.set_account_role('ipad1@gym-nw.de', 'admin');
+
+-- Konto löschen (die Einträge dieser Person bleiben erhalten)
+select private.delete_account('ipad3@gym-nw.de');
+```
+
+> **Nach einer Rollen-Änderung** muss sich die betroffene Person **einmal ab- und wieder
+> anmelden**. Die Rolle steckt im signierten Anmelde-Token und wird erst beim nächsten
+> Login neu ausgestellt.
+
+> **Wenn jemand versucht, sich selbst zu registrieren**, antwortet der Server mit einem
+> Fehler und es entsteht kein Konto. Das ist gewollt — die Anmeldeseite ist nur für die
+> Konten der Schule gedacht und bietet gar keine Registrierung an.
 
 ---
 
 ## 7. 🚀 Go-Live-Checkliste
 
-Diese Schritte bitte **in genau dieser Reihenfolge** abarbeiten — Schritt 3 sperrt die
-Registrierung, danach lassen sich Accounts nur noch über das Dashboard anlegen.
-
-1. **Echte Accounts anlegen** (1× `admin`, ca. 3× `editor`) und die Rollen setzen (SQL
-   siehe Abschnitt 6). Passwörter **mindestens 12 Zeichen**, erzeugt und gespeichert im
-   Passwortmanager der Schule — niemals per Mail oder Chat verschicken.
-2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL-Befehl aus Abschnitt 5),
-   danach im Dashboard die Nutzer `dev-admin@zeitstrahl-gymnw.de` und
-   `dev-editor@zeitstrahl-gymnw.de` löschen (Authentication → Users).
-3. **Registrierung deaktivieren:** Dashboard → **Authentication → Sign In / Providers** →
-   Schalter **„Allow new users to sign up“ AUS**.
+1. **Echte Konten anlegen** — per SQL, siehe Abschnitt 6: mindestens ein `admin`-Konto
+   für die Betreuung und je ein `editor`-Konto pro iPad. Die angezeigten Passwörter sofort
+   in den Passwortmanager der Schule übernehmen — sie lassen sich später nicht mehr
+   auslesen.
+2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL aus Abschnitt 5), dann:
+   ```sql
+   select private.delete_account('dev-admin@zeitstrahl-gymnw.de');
+   select private.delete_account('dev-editor@zeitstrahl-gymnw.de');
+   ```
+3. **Zusätzlich absichern (empfohlen):** Dashboard → **Authentication → Sign In / Providers**
+   → Schalter **„Allow new users to sign up“ AUS**. Die Datenbanksperre aus Abschnitt 6
+   greift auch ohne diesen Schalter — aber so bekommen Neugierige statt eines Serverfehlers
+   eine saubere Absage, und der Server spart sich die Arbeit.
 4. **Passwort-Mindestlänge auf 12 setzen:** Authentication → **Passwords**.
 5. **Site URL setzen:** Authentication → **URL Configuration** →
    `https://zeitstrahl-gymnw.de`.
@@ -263,7 +303,7 @@ sparsam zu sein.
 
 Wer darf was?
 
-| Aktion | anonyme Besucher | Eintrag-Account (`editor`) | Admin (`admin`) |
+| Aktion | anonyme Besucher | Eintrag-Konto (`editor`) | Admin (`admin`) |
 | --- | :---: | :---: | :---: |
 | Einträge lesen | ✓ | ✓ | ✓ |
 | Eintrag erstellen | ✗ | ✓ | ✓ |
@@ -271,6 +311,7 @@ Wer darf was?
 | Eintrag löschen | ✗ | ✗ | ✓ |
 | Meilenstein anlegen | ✗ | ✗ | ✓ |
 | Audio-Interview hochladen | ✗ | ✗ | ✓ |
+| **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |
 
 Diese Matrix ist **nicht** bloß eine Frage der Benutzeroberfläche, sondern wird in der
 Datenbank erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT)

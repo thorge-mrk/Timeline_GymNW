@@ -193,9 +193,23 @@ export interface EntryFormProps {
   isAdmin: boolean;
   /** Gesetzt im Bearbeiten-Modus (nur Admin). */
   entry?: Entry | null;
+  /**
+   * Der bearbeitete Eintrag wurde inzwischen von jemand anderem gelöscht.
+   * Schreiben ist dann gesperrt — sonst meldet das Formular „Gespeichert!“,
+   * obwohl die Zeile gar nicht mehr existiert. Die Eingaben bleiben stehen.
+   */
+  removed?: boolean;
+  /** Nach jedem erfolgreichen Schreiben in die Datenbank. */
+  onSaved?: (kind: "created" | "updated") => void;
 }
 
-export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
+export function EntryForm({
+  session,
+  isAdmin,
+  entry = null,
+  removed = false,
+  onSaved,
+}: EntryFormProps) {
   const router = useRouter();
   const isEdit = entry !== null;
   const titleRef = useRef<HTMLInputElement>(null);
@@ -270,7 +284,7 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || removed) return;
 
     setTriedSubmit(true);
     setError(null);
@@ -347,10 +361,12 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
           .update(fields)
           .eq("id", entry.id);
         if (dbErr) throw new FriendlyError(describeDbError(dbErr.message));
+        onSaved?.("updated");
       } else {
         const payload: EntryInsert = { ...fields, created_by: session.user.id };
         const { error: dbErr } = await supabase.from("entries").insert(payload);
         if (dbErr) throw new FriendlyError(describeDbError(dbErr.message));
+        onSaved?.("created");
       }
 
       // Erst nach dem erfolgreichen Schreiben: ersetzte Dateien wegräumen.
@@ -382,7 +398,7 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
   }
 
   async function handleDelete() {
-    if (!entry || busy) return;
+    if (!entry || busy || removed) return;
     const ok = window.confirm(
       `„${entry.title}“ wirklich vom Zeitstrahl löschen?\n\nDas lässt sich nicht rückgängig machen.`
     );
@@ -705,7 +721,7 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
         <button
           type="submit"
           className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
-          disabled={busy}
+          disabled={busy || removed}
         >
           {busy && phase !== "deleting" && (
             <span
@@ -726,7 +742,7 @@ export function EntryForm({ session, isAdmin, entry = null }: EntryFormProps) {
           <button
             type="button"
             className="btn-danger min-h-12"
-            disabled={busy}
+            disabled={busy || removed}
             onClick={() => void handleDelete()}
           >
             {phase === "deleting" && (
