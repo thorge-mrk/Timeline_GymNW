@@ -34,7 +34,7 @@ dazu Open Sans und weiche Kartenschatten.
   nicht per CSS-Skalierung, sondern echt neu positioniert — Text bleibt in jeder Zoomstufe
   gestochen scharf.
 - **Meilensteine mit Bildern** — große Karten unterhalb der Achse für die wichtigen
-  Ereignisse der Schulgeschichte.
+  Ereignisse der Schulgeschichte, gepflegt über ein Admin-Konto.
 - **Kategorien + Klassen-Filter** — Filter-Chips für Schule, Schüler, Lehrer, Ehemalige,
   Sonstiges; bei „Schüler“ kann zusätzlich nach Klasse bzw. Jahrgang gefiltert werden
   („8a“, „Abi 1996“).
@@ -50,7 +50,7 @@ dazu Open Sans und weiche Kartenschatten.
   verkleinert und als WebP (Fallback JPEG) hochgeladen. Das spart Upload-Zeit im
   Schul-WLAN und hält den Speicherplatz klein.
 - **Audio-Interviews** — aufgenommene Gespräche mit Ehemaligen lassen sich anhören.
-  Hochladen können sie alle angemeldeten Schul-Konten.
+  Hochladen kann sie ein Admin-Konto.
 
 ---
 
@@ -124,7 +124,7 @@ where created_by in (
 
 ---
 
-## 6. Accounts
+## 6. Accounts & Rollen
 
 **Konten entstehen ausschließlich per SQL — es gibt keinen anderen Weg.**
 
@@ -135,24 +135,32 @@ Registrierung, Magic Links, Einladungen, OAuth und auch der Knopf „Add user“
 Supabase-Dashboard. Selbst wenn im Dashboard versehentlich der Schalter „Allow new users
 to sign up“ aktiviert wird, kann sich niemand ein Konto anlegen.
 
-**Alle Konten sind gleichberechtigt.** Es gibt nur eine Rolle: Wer ein Konto hat, darf
-alles — Einträge anlegen, bearbeiten, löschen, Meilensteine setzen und Audio-Interviews
-hochladen. So können am Aktionstag mehrere Personen parallel arbeiten. Anonyme Besucher
-dürfen ausschließlich lesen.
+### Die zwei Rollen
+
+| Rolle | Darf |
+| --- | --- |
+| `admin` | **alles**: Einträge anlegen, **bearbeiten und löschen**, Meilensteine setzen, Audio-Interviews hochladen |
+| `editor` | **nur neue Einträge anlegen** — die Rolle für die iPads am Aktionstag |
+
+Es kann mehrere Konten jeder Rolle geben. Anonyme Besucher dürfen ausschließlich lesen.
 
 ### Konto anlegen
 
-Supabase-Dashboard → **SQL Editor**:
+Supabase-Dashboard → **SQL Editor**. Die Rolle muss **bewusst** angegeben werden, damit
+niemand versehentlich zu viele Rechte bekommt:
 
 ```sql
-select * from private.create_account('vorname.name@gym-nw.de');
+select * from private.create_account('schulleitung@gym-nw.de', 'admin');
+select * from private.create_account('ipad1@gym-nw.de',        'editor');
+select * from private.create_account('ipad2@gym-nw.de',        'editor');
+select * from private.create_account('ipad3@gym-nw.de',        'editor');
 ```
 
 Das Ergebnis zeigt das automatisch erzeugte Passwort **ein einziges Mal**:
 
-| konto | passwort | hinweis |
-| --- | --- | --- |
-| vorname.name@gym-nw.de | `TPwKKWCC87Tnjdsxefy` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
+| konto | rolle | passwort | hinweis |
+| --- | --- | --- | --- |
+| ipad1@gym-nw.de | editor | `YGz87AKn6QRos2ecaLCb` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
 
 Das Passwort ist 20 Zeichen lang, zufällig erzeugt und enthält keine verwechselbaren
 Zeichen (kein `0`/`O`, kein `1`/`l`/`I`) — es lässt sich also sicher abtippen oder
@@ -160,26 +168,25 @@ vorlesen. Danach ist es nur noch verschlüsselt gespeichert und **kann nicht meh
 ausgelesen werden**, auch nicht von der Schulverwaltung. Bitte sofort in den
 Passwortmanager der Schule übernehmen.
 
-Mehrere Konten auf einmal:
-
-```sql
-select * from private.create_account('konto1@gym-nw.de');
-select * from private.create_account('konto2@gym-nw.de');
-select * from private.create_account('konto3@gym-nw.de');
-```
-
 ### Konten verwalten
 
 ```sql
--- Neues Passwort erzeugen (wird wieder einmalig angezeigt)
-select * from private.reset_password('vorname.name@gym-nw.de');
-
--- Übersicht: wer hat ein Konto, wer war zuletzt angemeldet?
+-- Übersicht: wer hat ein Konto, welche Rolle, wer war zuletzt angemeldet?
 select * from private.list_accounts();
 
+-- Neues Passwort erzeugen (wird wieder einmalig angezeigt)
+select * from private.reset_password('ipad1@gym-nw.de');
+
+-- Rolle wechseln
+select private.set_account_role('ipad1@gym-nw.de', 'admin');
+
 -- Konto löschen (die Einträge dieser Person bleiben erhalten)
-select private.delete_account('vorname.name@gym-nw.de');
+select private.delete_account('ipad3@gym-nw.de');
 ```
+
+> **Nach einer Rollen-Änderung** muss sich die betroffene Person **einmal ab- und wieder
+> anmelden**. Die Rolle steckt im signierten Anmelde-Token und wird erst beim nächsten
+> Login neu ausgestellt.
 
 > **Wenn jemand versucht, sich selbst zu registrieren**, antwortet der Server mit einem
 > Fehler und es entsteht kein Konto. Das ist gewollt — die Anmeldeseite ist nur für die
@@ -189,10 +196,10 @@ select private.delete_account('vorname.name@gym-nw.de');
 
 ## 7. 🚀 Go-Live-Checkliste
 
-1. **Echte Konten anlegen** — per SQL, siehe Abschnitt 6. Für jede Person, die am
-   Aktionstag eintragen soll, ein eigenes Konto (so ist nachvollziehbar, wer was
-   eingetragen hat). Die angezeigten Passwörter sofort in den Passwortmanager der Schule
-   übernehmen — sie lassen sich später nicht mehr auslesen.
+1. **Echte Konten anlegen** — per SQL, siehe Abschnitt 6: mindestens ein `admin`-Konto
+   für die Betreuung und je ein `editor`-Konto pro iPad. Die angezeigten Passwörter sofort
+   in den Passwortmanager der Schule übernehmen — sie lassen sich später nicht mehr
+   auslesen.
 2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL aus Abschnitt 5), dann:
    ```sql
    select private.delete_account('dev-admin@zeitstrahl-gymnw.de');
@@ -296,15 +303,15 @@ sparsam zu sein.
 
 Wer darf was?
 
-| Aktion | anonyme Besucher | angemeldetes Schul-Konto |
-| --- | :---: | :---: |
-| Einträge lesen | ✓ | ✓ |
-| Eintrag erstellen | ✗ | ✓ |
-| Eintrag bearbeiten | ✗ | ✓ |
-| Eintrag löschen | ✗ | ✓ |
-| Meilenstein anlegen | ✗ | ✓ |
-| Audio-Interview hochladen | ✗ | ✓ |
-| **Konto anlegen** | ✗ | ✗ (nur per SQL im Dashboard) |
+| Aktion | anonyme Besucher | Eintrag-Konto (`editor`) | Admin (`admin`) |
+| --- | :---: | :---: | :---: |
+| Einträge lesen | ✓ | ✓ | ✓ |
+| Eintrag erstellen | ✗ | ✓ | ✓ |
+| Eintrag bearbeiten | ✗ | ✗ | ✓ |
+| Eintrag löschen | ✗ | ✗ | ✓ |
+| Meilenstein anlegen | ✗ | ✗ | ✓ |
+| Audio-Interview hochladen | ✗ | ✗ | ✓ |
+| **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |
 
 Diese Matrix ist **nicht** bloß eine Frage der Benutzeroberfläche, sondern wird in der
 Datenbank erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT)
