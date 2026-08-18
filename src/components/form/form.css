@@ -158,13 +158,22 @@
  * Kategorie-Chips: der aktive Chip bekommt seine Farbe per style-Attribut,
  * hier nur die gemeinsame Ruhe (Ring statt Sprung).
  * ------------------------------------------------------------------ */
+.chip-choice {
+  /* Fläche, Rahmen und Schrift kommen als style-Attribut aus categories.ts —
+     hier bleibt deshalb nur, was Inline-Styles nicht überschreiben. */
+  transition:
+    background-color 160ms var(--ease-out-strong),
+    border-color 160ms var(--ease-out-strong),
+    color 160ms var(--ease-out-strong),
+    box-shadow 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
 .chip-choice[data-on="true"] {
   box-shadow: var(--shadow-card);
 }
 @media (hover: hover) and (pointer: fine) {
   .chip-choice[data-on="false"]:not([data-locked="true"]):hover {
-    border-color: color-mix(in srgb, var(--color-coal-soft) 40%, transparent);
-    background-color: var(--color-paper-sunk);
+    box-shadow: var(--shadow-card);
   }
 }
 
@@ -217,4 +226,85 @@
   .live-badge__close:hover {
     color: var(--color-paper);
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Kleine Werkzeugknöpfe
+ * Genutzt von der Werkzeugleiste über der Beschreibung und von den
+ * Knöpfen an jedem Galeriebild. Immer mindestens 44 px hoch (Fingermaß),
+ * ruhig in der Fläche, deutlich im Zustand.
+ * ------------------------------------------------------------------ */
+.tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--color-paper-line);
+  border-radius: 0.75rem;
+  background-color: var(--color-paper-card);
+  color: var(--color-coal);
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    border-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    transform 150ms var(--ease-out-strong);
+}
+.tool-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.tool-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tool-btn:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-coal-soft) 35%, transparent);
+    background-color: var(--color-paper-sunk);
+  }
+}
+/* Eingeschaltet: die Zeile trägt diese Markierung bereits. */
+.tool-btn[data-on="true"] {
+  border-color: var(--color-fox);
+  background-color: var(--color-fox-soft);
+  color: var(--color-fox-deep);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tool-btn[data-on="true"]:hover:not(:disabled) {
+    border-color: var(--color-fox);
+    background-color: var(--color-fox-soft);
+  }
+}
+
+/* Entfernen-Knopf über dem Bild: hält sich zurück, bleibt aber lesbar. */
+.tool-btn--danger {
+  border-color: color-mix(in srgb, var(--color-brick) 22%, transparent);
+  background-color: color-mix(in srgb, var(--color-paper-card) 88%, transparent);
+  color: var(--ink-bad);
+  backdrop-filter: blur(2px);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tool-btn--danger:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-brick) 45%, transparent);
+    background-color: var(--color-paper-card);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Vorschau der Beschreibung — Kopfzeile zum Ein- und Ausklappen
+ * ------------------------------------------------------------------ */
+.preview-toggle {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .preview-toggle:hover {
+    background-color: color-mix(in srgb, var(--color-paper-line) 45%, transparent);
+  }
+}
+.chev {
+  transition: transform 180ms var(--ease-out-strong);
+}
+.chev[data-open="false"] {
+  transform: rotate(-90deg);
 }

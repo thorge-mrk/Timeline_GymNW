@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SchoolMark from "@/components/SchoolMark";
 import { nowYearFraction } from "@/lib/dates";
 import { timelineDomain } from "@/lib/timelinePosition";
@@ -12,7 +12,9 @@ import FilterBar, {
   usesClassFilter,
   type FilterState,
 } from "@/components/timeline/FilterBar";
-import RealtimeToast from "@/components/timeline/RealtimeToast";
+import NewEntriesBeacon, {
+  type Announcement,
+} from "@/components/timeline/NewEntriesBeacon";
 import Timeline, { type FocusRequest } from "@/components/timeline/Timeline";
 import "@/components/timeline/timeline.css";
 
@@ -73,11 +75,20 @@ export default function Home() {
   const { entries, setEntries, loading, error, refetch } = useEntries();
   const [filter, setFilter] = useState<FilterState>(INITIAL_FILTER);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
-  const [toastEntry, setToastEntry] = useState<Entry | null>(null);
+
+  /** Der zuletzt eingetroffene Eintrag — Stoff für die Meldung unten links. */
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  /** Neue Einträge, die noch niemand angesehen hat (ältester zuerst). */
+  const [pending, setPending] = useState<Entry[]>([]);
+  /** Wie viele Einträge dieser Serie schon angeflogen wurden („3 von 5"). */
+  const [seen, setSeen] = useState(0);
+  /** Liegt ein Fenster über dem Zeitstrahl? Dann ruht der Zähler-Kreis. */
+  const [overlayOpen, setOverlayOpen] = useState(false);
 
   /** Zeitpunkt der letzten Nutzer-Interaktion mit dem Zeitstrahl. */
   const lastInteractionRef = useRef(0);
   const focusNonceRef = useRef(0);
+  const announceNonceRef = useRef(0);
 
   const now = useMemo(() => nowYearFraction(), []);
   // Gesamtbereich aus ALLEN Einträgen — Filter sollen die Achse nicht verschieben.
@@ -102,17 +113,13 @@ export default function Home() {
   }, [entries, filter.category]);
 
   /** Fliegt zu einem Eintrag; blendet dafür nötigenfalls den Filter aus. */
-  const focusEntry = useCallback(
-    (entry: Entry) => {
-      setFilter((current) =>
-        matchesFilter(entry, current) ? current : INITIAL_FILTER
-      );
-      focusNonceRef.current += 1;
-      setFocus({ id: entry.id, nonce: focusNonceRef.current });
-      setToastEntry(null);
-    },
-    []
-  );
+  const focusEntry = useCallback((entry: Entry) => {
+    setFilter((current) =>
+      matchesFilter(entry, current) ? current : INITIAL_FILTER
+    );
+    focusNonceRef.current += 1;
+    setFocus({ id: entry.id, nonce: focusNonceRef.current });
+  }, []);
 
   const handleUpsert = useCallback(
     (entry: Entry) => setEntries((current) => upsertEntry(current, entry)),
@@ -120,22 +127,53 @@ export default function Home() {
   );
 
   const handleRemove = useCallback(
-    (id: string) =>
-      setEntries((current) => current.filter((entry) => entry.id !== id)),
+    (id: string) => {
+      setEntries((current) => current.filter((entry) => entry.id !== id));
+      // Was gelöscht wurde, kann auch niemand mehr ansteuern.
+      setPending((current) => current.filter((entry) => entry.id !== id));
+    },
     [setEntries]
   );
 
+  /**
+   * Ein neuer Eintrag ist eingetroffen. Gemeldet wird er immer — unten links.
+   * Ob die Kamera auch hinfliegt, entscheidet die Ruhezeit: Wer gerade zoomt
+   * oder schiebt, wird nicht unterbrochen; sein Eintrag reiht sich in den
+   * Zähler ein und kann später der Reihe nach angesehen werden.
+   */
   const handleInserted = useCallback(
     (entry: Entry) => {
-      const idle = Date.now() - lastInteractionRef.current;
-      if (idle > IDLE_BEFORE_FLIGHT_MS) {
+      announceNonceRef.current += 1;
+      setAnnouncement({ entry, nonce: announceNonceRef.current });
+
+      if (Date.now() - lastInteractionRef.current > IDLE_BEFORE_FLIGHT_MS) {
         focusEntry(entry);
-      } else {
-        setToastEntry(entry);
+        return;
       }
+
+      setPending((current) =>
+        current.some((e) => e.id === entry.id) ? current : [...current, entry]
+      );
     },
     [focusEntry]
   );
+
+  /** Klick auf Meldung oder Zähler-Kreis: zum nächsten neuen Eintrag. */
+  const handleJump = useCallback(
+    (entry: Entry) => {
+      if (pending.some((e) => e.id === entry.id)) {
+        setPending((current) => current.filter((e) => e.id !== entry.id));
+        setSeen((count) => count + 1);
+      }
+      focusEntry(entry);
+    },
+    [pending, focusEntry]
+  );
+
+  // Ist die Serie durchgesehen, beginnt die Zählung wieder bei null.
+  useEffect(() => {
+    if (pending.length === 0 && seen !== 0) setSeen(0);
+  }, [pending.length, seen]);
 
   useRealtimeEntries({
     onUpsert: handleUpsert,
@@ -146,8 +184,6 @@ export default function Home() {
   const noteInteraction = useCallback(() => {
     lastInteractionRef.current = Date.now();
   }, []);
-
-  const dismissToast = useCallback(() => setToastEntry(null), []);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -230,6 +266,7 @@ export default function Home() {
             domain={domain}
             focus={focus}
             onEntryDeleted={handleRemove}
+            onOverlayChange={setOverlayOpen}
             filterKey={`${filter.category}:${filter.className ?? ""}`}
             emptyHint={
               filtered.length === 0
@@ -239,13 +276,13 @@ export default function Home() {
           />
         )}
 
-        {toastEntry && (
-          <RealtimeToast
-            entry={toastEntry}
-            onShow={() => focusEntry(toastEntry)}
-            onDismiss={dismissToast}
-          />
-        )}
+        <NewEntriesBeacon
+          announcement={announcement}
+          pending={pending}
+          seen={seen}
+          hidden={overlayOpen}
+          onJump={handleJump}
+        />
       </div>
     </div>
   );

@@ -9,14 +9,13 @@ import "d3-transition";
 import { entryYearFraction, nowYearFraction } from "@/lib/dates";
 import type { Entry } from "@/lib/types";
 import {
-  AXIS_MARKER_GAP,
   CLUSTER_HEIGHT,
   CLUSTER_WIDTH,
-  ENTRY_LANE_HEIGHT,
   ENTRY_WIDTH,
-  MILESTONE_CONNECTOR,
   buildAxisTicks,
-  layoutTimeline,
+  planTimeline,
+  positionTimeline,
+  quantizeZoom,
   type EntryCluster,
   type TimelineDomain,
 } from "@/lib/timelinePosition";
@@ -34,6 +33,12 @@ const MIN_VISIBLE_YEARS = 0.25;
 const FOCUS_SPAN_YEARS = 8;
 /** Dauer des Kamerafluges — eine erklärende Bewegung, die länger dauern darf. */
 const FLY_DURATION = 800;
+/**
+ * Dämpfung des Mausrad-Zooms. d3 rechnet einen Rasterklick in ~0,002 · deltaY
+ * um; das ist auf vielen Mäusen ein spürbarer Sprung. Mit gut der Hälfte davon
+ * lässt sich der Ausschnitt dosieren, statt ihn zu treffen.
+ */
+const WHEEL_DAMPING = 0.55;
 
 /* --- Gestaffelter Eingang nach Filterwechsel ----------------------------- */
 
@@ -67,6 +72,12 @@ interface TimelineProps {
   /** Hinweis, wenn der aktive Filter nichts übrig lässt. */
   emptyHint?: string | null;
   /**
+   * Meldet, ob gerade ein Fenster über dem Zeitstrahl liegt (Eintrag oder
+   * Cluster-Liste). Die Seite blendet daraufhin ihre schwebenden Hinweise aus —
+   * sie gehören zum Zeitstrahl, nicht über ein geöffnetes Fenster.
+   */
+  onOverlayChange?: (open: boolean) => void;
+  /**
    * Kennung des aktiven Filters. Ändert sie sich, kommen die Elemente kurz
    * gestaffelt herein. Bewusst NICHT `entries`: ein per Realtime eintreffender
    * Eintrag hat mit Kameraflug, Puls und Hinweis schon seine eigene
@@ -85,6 +96,7 @@ export default function Timeline({
   focus,
   onEntryDeleted,
   emptyHint,
+  onOverlayChange,
   filterKey,
 }: TimelineProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -111,10 +123,9 @@ export default function Timeline({
    * sichtbare Frame schon der Startframe der Animation ist — sonst blitzt der
    * Endzustand einmal auf.
    *
-   * Nach `ENTER_WINDOW_MS` wird der Eingang wieder abgeschaltet. Das ist der
-   * entscheidende Teil: Marker, die später beim Pannen ins Bild rutschen,
-   * sollen NICHT animieren. Blockiert wird dabei nie etwas — die Elemente
-   * sind die ganze Zeit anklickbar.
+   * Nach `ENTER_WINDOW_MS` wird der Eingang wieder abgeschaltet. Danach greift
+   * für frisch montierte Elemente nur noch der kurze, ungestaffelte Eingang
+   * (`.tl-appear`).
    */
   const [enterKey, setEnterKey] = useState(filterKey);
   const [entering, setEntering] = useState(true);
@@ -158,27 +169,48 @@ export default function Timeline({
 
   const axisY = Math.round(height / 2);
   const aboveHeight = Math.max(axisY - 8, 0);
-  const belowHeight = Math.max(height - axisY - MILESTONE_CONNECTOR - 8, 0);
+  const belowHeight = Math.max(height - axisY - 8, 0);
 
   /* -------------------------------------------------------------- Layout */
 
+  /**
+   * Zoomfaktor für die LAYOUT-ENTSCHEIDUNGEN — gerastert auf sechs Stufen pro
+   * Verdopplung. Dadurch wird die Verteilung auf Seiten und Spuren nur bei
+   * spürbaren Zoomschritten neu gefasst; dazwischen bleibt das Bild ruhig.
+   */
+  const layoutScale = useMemo(
+    () => clamp(quantizeZoom(k), 1, maxScale),
+    [k, maxScale]
+  );
+
   // Hängt bewusst NICHT an transform.x: Pannen darf kein Neu-Layout auslösen.
-  const layout = useMemo(() => {
-    if (width <= 0 || height <= 0) {
-      return null;
-    }
-    return layoutTimeline(entries, {
-      toX: (yearFraction) => k * baseScale(yearFraction),
-      contentWidth: Math.max(width, 1) * k,
+  const plan = useMemo(() => {
+    if (width <= 0 || height <= 0) return null;
+    return planTimeline(entries, {
+      toLayoutX: (yearFraction) => layoutScale * baseScale(yearFraction),
+      layoutContentWidth: Math.max(width, 1) * layoutScale,
+      layoutScale,
       aboveHeight,
       belowHeight,
     });
-  }, [entries, k, baseScale, width, height, aboveHeight, belowHeight]);
+  }, [entries, layoutScale, baseScale, width, height, aboveHeight, belowHeight]);
+
+  /** Die eigentlichen Pixel — stufenlos, damit nichts vom Datum abrückt. */
+  const layout = useMemo(() => {
+    if (!plan) return null;
+    return positionTimeline(plan, {
+      toX: (yearFraction) => k * baseScale(yearFraction),
+      contentWidth: Math.max(width, 1) * k,
+      scale: k,
+    });
+  }, [plan, k, baseScale, width]);
 
   /**
    * Sichtfenster im Content-Raum: Viewport + 20 % Puffer, gerastert auf 10 %
    * der Breite. Da `lo`/`hi` einfache Zahlen sind, laufen die Memos unten beim
-   * Pannen erst wieder an, wenn das Fenster tatsächlich weiterspringt.
+   * Pannen erst wieder an, wenn das Fenster tatsächlich weiterspringt. Der
+   * Puffer sorgt außerdem dafür, dass der kurze Eingang neu montierter Marker
+   * noch außerhalb des Bildes abläuft.
    */
   const windowStep = Math.max(40, width * 0.1);
   const lo = Math.floor((-x - width * 0.2) / windowStep) * windowStep;
@@ -229,6 +261,15 @@ export default function Timeline({
         // Standardfilter von d3, aber Trackpad-Pinch (ctrl+wheel) erlaubt.
         return (!event.ctrlKey || event.type === "wheel") && !event.button;
       })
+      // Wie d3s Standardformel, nur gedämpft — ein Rasterklick soll schieben,
+      // nicht springen.
+      .wheelDelta(
+        (event: WheelEvent) =>
+          -event.deltaY *
+          (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) *
+          (event.ctrlKey ? 10 : 1) *
+          WHEEL_DAMPING
+      )
       .on("start", (event: D3ZoomEvent<HTMLDivElement, unknown>) => {
         if (!event.sourceEvent) return;
         draggedRef.current = false;
@@ -379,7 +420,7 @@ export default function Timeline({
     [domainSpan, maxScale, applyTransform, translationFor]
   );
 
-  // Anforderung von außen (neuer Eintrag per Realtime oder Toast-Knopf)
+  // Anforderung von außen (neuer Eintrag per Realtime oder Zähler-Kreis)
   useEffect(() => {
     if (!focus || width <= 0) return;
     if (handledFocusRef.current === focus.nonce) return;
@@ -395,6 +436,21 @@ export default function Timeline({
     const timer = window.setTimeout(() => setHighlightId(null), 5000);
     return () => window.clearTimeout(timer);
   }, [highlightId]);
+
+  /* --------------------------------------------- Fenster nach oben melden */
+
+  const overlayOpen = Boolean(
+    selected || (clusterEntries && clusterEntries.length > 0)
+  );
+  const overlayCallbackRef = useRef(onOverlayChange);
+  overlayCallbackRef.current = onOverlayChange;
+
+  useEffect(() => {
+    overlayCallbackRef.current?.(overlayOpen);
+  }, [overlayOpen]);
+
+  // Verschwindet der Zeitstrahl (Filter leert alles, Fehler), gilt: kein Fenster.
+  useEffect(() => () => overlayCallbackRef.current?.(false), []);
 
   /* ------------------------------------------------------------ Bedienung */
 
@@ -456,12 +512,6 @@ export default function Timeline({
 
   /* -------------------------------------------------------------- Rendern */
 
-  const clusterBottom =
-    height -
-    axisY +
-    AXIS_MARKER_GAP +
-    (layout?.entryLanes ?? 0) * ENTRY_LANE_HEIGHT;
-
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
@@ -487,13 +537,21 @@ export default function Timeline({
                 now={now}
               />
 
+              {/*
+                Der Schlüssel trägt den Filter mit: Bei einem Filterwechsel
+                soll die ganze Tafel neu hereinkommen, nicht nur die frisch
+                dazugekommenen Elemente. Beim Zoomen und Pannen bleibt er
+                stabil — dort wird nichts neu montiert.
+              */}
               {visibleMilestones.map((placement, index) => (
                 <MilestoneCard
-                  key={placement.item.id}
+                  key={`${filterKey}:${placement.item.id}`}
                   entry={placement.item}
                   x={placement.x}
                   left={placement.left}
-                  lane={placement.lane}
+                  side={placement.side}
+                  offset={placement.offset}
+                  height={height}
                   axisY={axisY}
                   layout={layout.milestone}
                   highlighted={highlightId === placement.item.id}
@@ -504,11 +562,12 @@ export default function Timeline({
 
               {visibleMarkers.map((placement, index) => (
                 <EntryMarker
-                  key={placement.item.id}
+                  key={`${filterKey}:${placement.item.id}`}
                   entry={placement.item}
                   x={placement.x}
                   left={placement.left}
-                  lane={placement.lane}
+                  side={placement.side}
+                  offset={placement.offset}
                   height={height}
                   axisY={axisY}
                   highlighted={highlightId === placement.item.id}
@@ -523,10 +582,12 @@ export default function Timeline({
                   type="button"
                   onClick={() => handleCluster(cluster)}
                   aria-label={`${cluster.entries.length} weitere Einträge — hineinzoomen`}
-                  className="tl-cluster absolute flex items-center justify-center rounded-full bg-navy text-[11px] font-bold tracking-tight text-paper tabular-nums shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+                  className="tl-cluster tl-appear absolute flex items-center justify-center rounded-full bg-navy text-[11px] font-bold tracking-tight text-paper tabular-nums shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
                   style={{
                     left: cluster.left,
-                    bottom: clusterBottom,
+                    ...(cluster.side === "above"
+                      ? { bottom: height - axisY + cluster.offset }
+                      : { top: axisY + cluster.offset }),
                     width: CLUSTER_WIDTH,
                     height: CLUSTER_HEIGHT,
                   }}
@@ -562,7 +623,7 @@ export default function Timeline({
           </div>
         )}
 
-        {/* Bedienhinweis */}
+        {/* Bedienhinweis — bleibt unten links unter der Meldungsecke */}
         <p className="pointer-events-none absolute bottom-4 left-5 z-10 hidden text-[11px] text-coal-faint sm:block">
           Ziehen zum Verschieben · Scrollen oder Kneifen zum Zoomen
         </p>

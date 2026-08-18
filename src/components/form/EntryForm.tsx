@@ -8,16 +8,27 @@ import {
   CATEGORIES,
   CLASS_CATEGORIES,
   categoryById,
+  categoryPillStyle,
   type CategoryId,
 } from "@/lib/categories";
 import { parseSmartDate } from "@/lib/dates";
 import { publicUrl, supabase } from "@/lib/supabase";
 import type { Entry, EntryInsert } from "@/lib/types";
 import { AudioUpload, type PreparedAudio } from "./AudioUpload";
-import { ImageUpload, type PreparedImage } from "./ImageUpload";
+import { GalleryUpload } from "./GalleryUpload";
+import { ImageUpload } from "./ImageUpload";
+import {
+  GALLERY_MAX,
+  IMAGE_BUCKET,
+  newImageItem,
+  storedImageItem,
+  useObjectUrlCleanup,
+  type ImageItem,
+  type PreparedImage,
+} from "./imageItems";
+import { RichTextInput } from "./RichTextInput";
 import { SmartDateInput } from "./SmartDateInput";
 
-const IMAGE_BUCKET = "entry-images";
 const AUDIO_BUCKET = "entry-audio";
 
 const TITLE_MAX = 120;
@@ -224,20 +235,33 @@ export function EntryForm({
   const [authorName, setAuthorName] = useState(entry?.author_name ?? "");
   const [description, setDescription] = useState(entry?.description ?? "");
 
-  const [image, setImage] = useState<PreparedImage | null>(null);
+  /** Titelbild (image_path) — neu gewählt oder schon gespeichert. */
+  const [cover, setCover] = useState<ImageItem | null>(() =>
+    entry?.image_path ? storedImageItem(entry.image_path) : null
+  );
+  /** Weitere Bilder (image_paths) in Anzeigereihenfolge. */
+  const [gallery, setGallery] = useState<ImageItem[]>(() =>
+    (entry?.image_paths ?? []).map((path) => storedImageItem(path))
+  );
   const [audio, setAudio] = useState<PreparedAudio | null>(null);
   /** In der Datenbank aktuell gespeicherte Pfade. */
   const [storedImagePath, setStoredImagePath] = useState(
     entry?.image_path ?? null
   );
+  const [storedImagePaths, setStoredImagePaths] = useState<string[]>(
+    entry?.image_paths ?? []
+  );
   const [storedAudioPath, setStoredAudioPath] = useState(
     entry?.audio_path ?? null
   );
-  /** Pfade, die nach dem Speichern erhalten bleiben sollen (null = entfernen). */
-  const [keepImagePath, setKeepImagePath] = useState(entry?.image_path ?? null);
+  /** Pfad, der nach dem Speichern erhalten bleiben soll (null = entfernen). */
   const [keepAudioPath, setKeepAudioPath] = useState(entry?.audio_path ?? null);
 
   const [phase, setPhase] = useState<Phase>("idle");
+  /** Fortschritt beim Hochladen der Bilder — „Bild 2 von 5“. */
+  const [upload, setUpload] = useState<{ done: number; total: number } | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
   const [saved, setSaved] = useState<"created" | "updated" | null>(null);
@@ -246,18 +270,63 @@ export function EntryForm({
   const showClassField = CLASS_CATEGORIES.includes(category);
   const titleMissing = triedSubmit && title.trim().length === 0;
 
-  const existingImageUrl = useMemo(
-    () => (keepImagePath ? publicUrl(IMAGE_BUCKET, keepImagePath) : null),
-    [keepImagePath]
-  );
+  // Objekt-URLs der Vorschauen freigeben, sobald ein Bild aus dem Formular fällt.
+  const allImages = useMemo(() => [cover, ...gallery], [cover, gallery]);
+  useObjectUrlCleanup(allImages);
+
   const existingAudioUrl = useMemo(
     () => (keepAudioPath ? publicUrl(AUDIO_BUCKET, keepAudioPath) : null),
     [keepAudioPath]
   );
 
+  /** Titelbild neu wählen — ersetzt das bisherige. */
+  function pickCover(prepared: PreparedImage) {
+    setCover(newImageItem(prepared));
+  }
+
+  /** Neue Fotos hinten an die Galerie hängen (Limit der Datenbank beachten). */
+  function addToGallery(images: PreparedImage[]) {
+    const room = Math.max(0, GALLERY_MAX - gallery.length);
+    if (room === 0) return;
+    const items = images.slice(0, room).map((image) => newImageItem(image));
+    setGallery((current) => [...current, ...items].slice(0, GALLERY_MAX));
+  }
+
+  function removeFromGallery(id: string) {
+    setGallery((current) => current.filter((item) => item.id !== id));
+  }
+
+  /** Ein Feld nach vorne (−1) oder nach hinten (+1) schieben. */
+  function moveInGallery(id: string, direction: -1 | 1) {
+    setGallery((current) => {
+      const from = current.findIndex((item) => item.id === id);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= current.length) return current;
+      const next = [...current];
+      [next[from], next[to]] = [next[to], next[from]];
+      return next;
+    });
+  }
+
+  /**
+   * Galeriebild zum Titelbild machen. Das bisherige Titelbild rutscht dabei
+   * auf genau diesen Platz in der Galerie — es geht also nichts verloren.
+   */
+  function makeCover(id: string) {
+    const index = gallery.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    const picked = gallery[index];
+    const next = [...gallery];
+    if (cover) next[index] = cover;
+    else next.splice(index, 1);
+    setGallery(next);
+    setCover(picked);
+  }
+
   function failWith(message: string) {
     setError(message);
     setPhase("idle");
+    setUpload(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -269,11 +338,14 @@ export function EntryForm({
     setAuthorName("");
     setDescription("");
     setIsMilestone(false);
-    setImage(null);
+    setCover(null);
+    setGallery([]);
     setAudio(null);
+    // Wichtig: Die gerade gespeicherten Bilder gehören jetzt zum angelegten
+    // Eintrag — sie dürfen beim nächsten Speichern nicht aufgeräumt werden.
     setStoredImagePath(null);
+    setStoredImagePaths([]);
     setStoredAudioPath(null);
-    setKeepImagePath(null);
     setKeepAudioPath(null);
     setTriedSubmit(false);
     setError(null);
@@ -306,23 +378,56 @@ export function EntryForm({
       return;
     }
 
+    if (gallery.length > GALLERY_MAX) {
+      failWith(
+        `Es sind höchstens ${GALLERY_MAX} weitere Bilder erlaubt — bitte ein paar entfernen.`
+      );
+      return;
+    }
+
     const uploaded: { bucket: string; path: string }[] = [];
 
     try {
-      let imagePath = keepImagePath;
-      if (image) {
+      // Erst alle neuen Bilder hochladen — Titelbild zuerst, dann die Galerie
+      // in ihrer Reihenfolge. Schon gespeicherte Bilder bleiben, wo sie sind.
+      const fresh = [cover, ...gallery].filter(
+        (item): item is ImageItem => item?.prepared != null
+      );
+      let done = 0;
+
+      /** Gespeicherte Bilder behalten ihren Pfad, neue werden hochgeladen. */
+      async function pathOf(item: ImageItem): Promise<string> {
+        if (item.path) return item.path;
+        const prepared = item.prepared;
+        if (!prepared) {
+          throw new FriendlyError(
+            "Ein Bild konnte nicht zugeordnet werden — bitte es noch einmal auswählen."
+          );
+        }
+        done += 1;
         setPhase("image");
-        const path = `${session.user.id}/${crypto.randomUUID()}.${image.ext}`;
+        setUpload({ done, total: fresh.length });
+        const path = `${session.user.id}/${crypto.randomUUID()}.${prepared.ext}`;
         const { error: upErr } = await supabase.storage
           .from(IMAGE_BUCKET)
-          .upload(path, image.blob, {
-            contentType: image.mime,
+          .upload(path, prepared.blob, {
+            contentType: prepared.mime,
             upsert: false,
           });
-        if (upErr) throw new FriendlyError(describeUploadError(upErr.message, "Bild"));
+        if (upErr)
+          throw new FriendlyError(describeUploadError(upErr.message, "Bild"));
         uploaded.push({ bucket: IMAGE_BUCKET, path });
-        imagePath = path;
+        return path;
       }
+
+      const imagePath: string | null = cover ? await pathOf(cover) : null;
+
+      const imagePaths: string[] = [];
+      for (const item of gallery) {
+        imagePaths.push(await pathOf(item));
+      }
+
+      setUpload(null);
 
       let audioPath = keepAudioPath;
       if (audio && isAdmin) {
@@ -352,6 +457,7 @@ export function EntryForm({
         day: smart.day ?? null,
         is_milestone: isAdmin ? isMilestone : false,
         image_path: imagePath,
+        image_paths: imagePaths,
         audio_path: audioPath,
       };
 
@@ -370,18 +476,27 @@ export function EntryForm({
       }
 
       // Erst nach dem erfolgreichen Schreiben: ersetzte Dateien wegräumen.
-      if (storedImagePath && storedImagePath !== imagePath) {
-        await removeQuietly(IMAGE_BUCKET, storedImagePath);
+      // Bilder, die weiter im Eintrag stehen, bleiben natürlich liegen.
+      const stillUsed = new Set(
+        [imagePath, ...imagePaths].filter((path): path is string => !!path)
+      );
+      for (const path of [storedImagePath, ...storedImagePaths]) {
+        if (path && !stillUsed.has(path)) {
+          await removeQuietly(IMAGE_BUCKET, path);
+        }
       }
       if (storedAudioPath && storedAudioPath !== audioPath) {
         await removeQuietly(AUDIO_BUCKET, storedAudioPath);
       }
 
       setStoredImagePath(imagePath);
+      setStoredImagePaths(imagePaths);
       setStoredAudioPath(audioPath);
-      setKeepImagePath(imagePath);
       setKeepAudioPath(audioPath);
-      setImage(null);
+      // Aus „frisch hochgeladen“ wird „gespeichert“: Die Objekt-URLs der
+      // Vorschauen werden dadurch frei, die Bilder kommen jetzt vom CDN.
+      setCover(imagePath ? storedImageItem(imagePath) : null);
+      setGallery(imagePaths.map((path) => storedImageItem(path)));
       setAudio(null);
       setPhase("idle");
       setSaved(isEdit ? "updated" : "created");
@@ -414,6 +529,9 @@ export function EntryForm({
       if (delErr) throw new FriendlyError(describeDbError(delErr.message));
 
       await removeQuietly(IMAGE_BUCKET, storedImagePath);
+      for (const path of storedImagePaths) {
+        await removeQuietly(IMAGE_BUCKET, path);
+      }
       await removeQuietly(AUDIO_BUCKET, storedAudioPath);
       router.replace("/");
     } catch (err) {
@@ -472,7 +590,9 @@ export function EntryForm({
 
   const submitLabel =
     phase === "image"
-      ? "Bild wird hochgeladen …"
+      ? upload && upload.total > 1
+        ? `Bild ${upload.done} von ${upload.total} wird hochgeladen …`
+        : "Bild wird hochgeladen …"
       : phase === "audio"
         ? "Audio wird hochgeladen …"
         : phase === "saving"
@@ -567,10 +687,10 @@ export function EntryForm({
                   data-locked={busy}
                   className={`chip chip-choice min-h-11 px-4 py-2.5 text-sm
                     has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-fox ${
-                      active
-                        ? "border-transparent"
-                        : "border-paper-line bg-paper-card text-coal"
-                    } ${busy ? "cursor-not-allowed opacity-60" : ""}`}
+                      busy ? "cursor-not-allowed opacity-60" : ""
+                    }`}
+                  /* Ruhend: helle Kategoriefläche mit farbigem Rahmen.
+                     Gewählt: dieselbe Farbe, aber kräftig ausgefüllt. */
                   style={
                     active
                       ? {
@@ -578,7 +698,7 @@ export function EntryForm({
                           borderColor: c.color,
                           color: fg,
                         }
-                      : undefined
+                      : categoryPillStyle(c.id)
                   }
                 >
                   <input
@@ -620,7 +740,7 @@ export function EntryForm({
                 Als Meilenstein hervorheben
               </span>
               <span className="hint mt-0.5 block">
-                Große Karte mit Bild auf dem Zeitstrahl.
+                Große Karte mit dem Titelbild auf dem Zeitstrahl.
               </span>
             </span>
           </label>
@@ -671,41 +791,43 @@ export function EntryForm({
           </p>
         </div>
 
-        {/* 6 — Beschreibung */}
-        <div>
-          <div className="flex items-baseline justify-between gap-3">
-            <label className="label" htmlFor="entry-description">
-              Beschreibung
-            </label>
-            <span aria-hidden className="hint tabular-nums">
-              noch {DESCRIPTION_MAX - description.length}
-            </span>
-          </div>
-          <textarea
-            id="entry-description"
-            rows={5}
-            className="input resize-y leading-relaxed"
-            placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
-            maxLength={DESCRIPTION_MAX}
-            value={description}
-            disabled={busy}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
+        {/* 6 — Beschreibung mit kleinem Textwerkzeug */}
+        <RichTextInput
+          id="entry-description"
+          label="Beschreibung"
+          value={description}
+          onChange={setDescription}
+          maxLength={DESCRIPTION_MAX}
+          placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
+          disabled={busy}
+        />
       </Section>
 
-      <Section title="Bild & Ton">
-        {/* 7 — Bild */}
+      <Section title="Bilder">
+        {/* 7 — Titelbild */}
         <ImageUpload
-          value={image}
-          onChange={setImage}
-          existingUrl={existingImageUrl}
-          onRemoveExisting={() => setKeepImagePath(null)}
+          value={cover}
+          onPick={pickCover}
+          onRemove={() => setCover(null)}
           disabled={busy}
         />
 
-        {/* 8 — Audio (nur Admin) */}
-        {isAdmin && (
+        {/* 8 — Galerie */}
+        <GalleryUpload
+          items={gallery}
+          max={GALLERY_MAX}
+          hasCover={cover !== null}
+          onAdd={addToGallery}
+          onRemove={removeFromGallery}
+          onMove={moveInGallery}
+          onUseAsCover={makeCover}
+          disabled={busy}
+        />
+      </Section>
+
+      {/* 9 — Audio (nur Admin) */}
+      {isAdmin && (
+        <Section title="Ton">
           <AudioUpload
             value={audio}
             onChange={setAudio}
@@ -713,8 +835,8 @@ export function EntryForm({
             onRemoveExisting={() => setKeepAudioPath(null)}
             disabled={busy}
           />
-        )}
-      </Section>
+        </Section>
+      )}
 
       {/* Absenden */}
       <div className="border-t border-paper-line pt-7">

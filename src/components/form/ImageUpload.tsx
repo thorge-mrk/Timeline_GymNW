@@ -1,28 +1,24 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
-import { compressImage, formatBytes } from "@/lib/compressImage";
-
-/** Fertig komprimiertes Bild, bereit für den Upload. */
-export interface PreparedImage {
-  blob: Blob;
-  ext: "webp" | "jpg";
-  mime: string;
-  originalName: string;
-  originalSize: number;
-}
+import { useId, useRef, useState } from "react";
+import { formatBytes } from "@/lib/compressImage";
+import {
+  ERR_NOT_AN_IMAGE,
+  looksLikeImage,
+  prepareImage,
+  type ImageItem,
+  type PreparedImage,
+} from "./imageItems";
 
 interface ImageUploadProps {
-  value: PreparedImage | null;
-  onChange: (value: PreparedImage | null) => void;
-  /** Bereits gespeichertes Bild (Bearbeiten-Modus). */
-  existingUrl?: string | null;
-  /** Wird aufgerufen, wenn das gespeicherte Bild entfernt werden soll. */
-  onRemoveExisting?: () => void;
+  /** Aktuelles Titelbild — neu gewählt oder bereits gespeichert. */
+  value: ImageItem | null;
+  /** Ein neues Foto wurde gewählt und ist fertig verkleinert. */
+  onPick: (image: PreparedImage) => void;
+  /** Titelbild entfernen (gespeicherte Bilder verschwinden erst beim Speichern). */
+  onRemove: () => void;
   disabled?: boolean;
 }
-
-const ERR_NOT_AN_IMAGE = "Bitte eine Bilddatei auswählen (z. B. JPG oder PNG).";
 
 /** Kamera-Symbol — als Vektor, damit es in jeder Größe scharf bleibt. */
 function CameraIcon() {
@@ -43,53 +39,35 @@ function CameraIcon() {
   );
 }
 
+/**
+ * Das Titelbild: genau ein Foto. Es steht auf dem Zeitstrahl (bei Meilensteinen
+ * groß auf der Karte) und ganz oben im geöffneten Eintrag.
+ */
 export function ImageUpload({
   value,
-  onChange,
-  existingUrl = null,
-  onRemoveExisting,
+  onPick,
+  onRemove,
   disabled = false,
 }: ImageUploadProps) {
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Objekt-URL nur im Browser erzeugen und beim Wechsel/Unmount wieder freigeben.
-  useEffect(() => {
-    if (!value) {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(value.blob);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [value]);
 
   async function handleFile(file: File | undefined | null) {
     if (!file) return;
     setError(null);
 
-    const looksLikeImage =
-      file.type.startsWith("image/") ||
-      /\.(jpe?g|png|webp|gif|heic|heif|avif|bmp)$/i.test(file.name);
-    if (!looksLikeImage) {
+    if (!looksLikeImage(file)) {
       setError(ERR_NOT_AN_IMAGE);
       return;
     }
 
     setBusy(true);
     try {
-      const compressed = await compressImage(file);
-      onChange({
-        ...compressed,
-        originalName: file.name,
-        originalSize: file.size,
-      });
+      onPick(await prepareImage(file));
     } catch (e) {
-      onChange(null);
       setError(
         e instanceof Error
           ? e.message
@@ -106,13 +84,10 @@ export function ImageUpload({
     inputRef.current?.click();
   }
 
-  const showExisting = !value && !!existingUrl;
-  const shownUrl = value ? previewUrl : existingUrl;
-
   return (
     <div role="group" aria-labelledby={`${inputId}-label`}>
       <span className="label" id={`${inputId}-label`}>
-        Bild
+        Titelbild
       </span>
 
       <input
@@ -126,7 +101,7 @@ export function ImageUpload({
         onChange={(e) => void handleFile(e.target.files?.[0])}
       />
 
-      {!value && !showExisting && (
+      {!value && (
         <button
           type="button"
           onClick={openPicker}
@@ -159,7 +134,7 @@ export function ImageUpload({
             <>
               <CameraIcon />
               <span className="text-sm font-semibold text-coal">
-                Foto auswählen
+                Titelbild auswählen
               </span>
               <span className="text-xs text-coal-faint">
                 oder Datei einfach hierher ziehen · JPG oder PNG
@@ -169,37 +144,31 @@ export function ImageUpload({
         </button>
       )}
 
-      {(value || showExisting) && (
+      {value && (
         <div className="animate-fade-up rounded-2xl border border-paper-line bg-paper-sunk p-3">
-          {shownUrl ? (
-            // Kein next/image — die Seite wird statisch exportiert.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={shownUrl}
-              alt={
-                value
-                  ? "Vorschau des ausgewählten Bildes"
-                  : "Aktuell gespeichertes Bild"
-              }
-              className="max-h-64 w-full rounded-xl bg-paper-card object-contain shadow-(--shadow-card)"
-            />
-          ) : (
-            <div className="flex h-32 items-center justify-center rounded-xl bg-paper-card">
-              <span className="hint">Vorschau wird erstellt …</span>
-            </div>
-          )}
+          {/* Kein next/image — die Seite wird statisch exportiert. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value.url}
+            alt={
+              value.prepared
+                ? "Vorschau des ausgewählten Titelbildes"
+                : "Aktuell gespeichertes Titelbild"
+            }
+            className="max-h-64 w-full rounded-xl bg-paper-card object-contain shadow-(--shadow-card)"
+          />
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
             <p className="min-w-0 text-xs leading-relaxed break-words text-coal-faint">
-              {value ? (
+              {value.prepared ? (
                 <>
                   <span className="font-semibold text-coal-soft">
-                    {value.originalName}
+                    {value.prepared.originalName}
                   </span>
                   {" · komprimiert: "}
-                  {formatBytes(value.blob.size)}
-                  {value.originalSize > value.blob.size && (
-                    <> (vorher {formatBytes(value.originalSize)})</>
+                  {formatBytes(value.prepared.blob.size)}
+                  {value.prepared.originalSize > value.prepared.blob.size && (
+                    <> (vorher {formatBytes(value.prepared.originalSize)})</>
                   )}
                 </>
               ) : (
@@ -222,11 +191,10 @@ export function ImageUpload({
                 disabled={disabled || busy}
                 onClick={() => {
                   setError(null);
-                  if (value) onChange(null);
-                  else onRemoveExisting?.();
+                  onRemove();
                 }}
               >
-                Bild entfernen
+                Titelbild entfernen
               </button>
             </div>
           </div>
@@ -243,8 +211,8 @@ export function ImageUpload({
       )}
 
       <p className="hint mt-2 leading-relaxed">
-        Wird automatisch verkleinert (max. 1600 px) — Querformat wirkt auf dem
-        Zeitstrahl am besten.
+        Titelbild — erscheint auf dem Zeitstrahl. Wird automatisch verkleinert
+        (max. 1600 px); Querformat wirkt am besten.
       </p>
     </div>
   );
