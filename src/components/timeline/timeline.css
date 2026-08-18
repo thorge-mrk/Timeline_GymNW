@@ -17,7 +17,7 @@
  */
 
 /* ========================================================================== */
-/*  Marker über der Achse                                                     */
+/*  Marker an der Achse (ober- wie unterhalb)                                 */
 /* ========================================================================== */
 
 .tl-marker {
@@ -42,6 +42,26 @@
   transition-duration: 100ms;
 }
 
+/*
+ * Meilenstein, für den gerade keine große Karte passt. Er läuft als Marker mit,
+ * bleibt aber als Meilenstein lesbar: Stern statt Farbpunkt (in der Komponente)
+ * und ein zweiter, kräftiger Fuchs-Rand um die Pille. Nach der Hover-Regel
+ * notiert, damit der Ring beim Zeigen nicht verschwindet.
+ */
+.tl-marker--milestone {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-fox) 45%, transparent),
+    var(--shadow-card);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-marker--milestone:hover {
+    box-shadow:
+      0 0 0 1px var(--color-fox),
+      var(--shadow-card-lg);
+  }
+}
+
 /* Angeflogener Eintrag: feiner Fuchs-Ring statt lauter Farbfläche. */
 .tl-marker--active {
   border-color: var(--color-fox);
@@ -51,7 +71,7 @@
 }
 
 /* ========================================================================== */
-/*  Meilenstein-Karten unter der Achse                                        */
+/*  Meilenstein-Karten (ober- wie unterhalb)                                  */
 /* ========================================================================== */
 
 .tl-milestone {
@@ -142,7 +162,7 @@
 }
 
 /* ========================================================================== */
-/*  Runde Icon-Taste (Modal schließen, Toast schließen)                       */
+/*  Runde Icon-Taste (Modal schließen)                                        */
 /* ========================================================================== */
 
 .tl-iconbtn {
@@ -215,35 +235,115 @@
 }
 
 /* ========================================================================== */
-/*  Realtime-Hinweis — kommt von unten, geht nach unten (räumlich stimmig)    */
+/*  Live-Meldung → Zähler-Kreis (unten links)                                 */
 /* ========================================================================== */
 
-@keyframes tl-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(calc(100% + 16px));
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/*
+ * Ein Element, zwei Zustände. Die Meldung fährt zum Kreis zusammen: Breite und
+ * Radius wandern, der Text blendet aus, die Zahl ein. `width` zu animieren ist
+ * hier die Ausnahme mit Ansage — genau diese Bewegung wird erzählt, und das
+ * Element steht absolut positioniert für sich allein, der Reflow bleibt darin.
+ */
+
+.tl-beacon-slot {
+  pointer-events: none;
+  transition:
+    opacity 220ms var(--ease-out-strong),
+    transform 220ms var(--ease-drawer);
 }
-@keyframes tl-toast-out {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(calc(100% + 16px));
+
+.tl-beacon-slot[data-state="hidden"] {
+  opacity: 0;
+  transform: translateY(10px);
+  visibility: hidden;
+  /* Sichtbarkeit erst NACH dem Ausblenden — sonst ist die Karte sofort weg. */
+  transition:
+    opacity 180ms var(--ease-out-strong),
+    transform 180ms var(--ease-out-strong),
+    visibility 0s linear 180ms;
+}
+
+.tl-beacon {
+  /* Feste Breite (vw statt %), damit die Meldung sie behält, während der
+     Rahmen schrumpft — sie wird beschnitten, nicht gequetscht. */
+  --tl-beacon-w: min(340px, calc(100vw - 2rem));
+  pointer-events: auto;
+  width: var(--tl-beacon-w);
+  height: 56px;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: var(--shadow-pop);
+  transition:
+    width 280ms var(--ease-out-strong),
+    border-radius 280ms var(--ease-out-strong),
+    box-shadow 280ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+.tl-beacon[data-phase="counter"] {
+  width: 56px;
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-fox) 55%, transparent),
+    var(--shadow-pop);
+}
+
+/* Der globale Fokusring rundet Buttons auf 8 px ab — hier würde das die
+   Verwandlung stören. Radius bleibt, der Ring liegt außen an. */
+.tl-beacon:focus-visible {
+  border-radius: 18px;
+}
+.tl-beacon[data-phase="counter"]:focus-visible {
+  border-radius: 999px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-beacon:hover {
+    transform: translateY(-1px);
   }
 }
 
-.tl-toast {
-  animation: tl-toast-in 320ms var(--ease-drawer) both;
+/* Kein `transition-duration`-Kurzschluss hier: der Druck würde sonst auch die
+   Verwandlung beschleunigen. 160 ms aus der Liste oben reichen völlig. */
+.tl-beacon:active {
+  transform: scale(0.97);
 }
-.tl-toast[data-state="closing"] {
-  animation: tl-toast-out 200ms var(--ease-out-strong) both;
+
+.tl-beacon__msg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: stretch;
+  width: var(--tl-beacon-w);
+  opacity: 1;
+  transition: opacity 130ms var(--ease-out-strong);
+}
+
+.tl-beacon[data-phase="counter"] .tl-beacon__msg {
+  opacity: 0;
+}
+
+/* Kategorie-Akzent an der Kante — er geht mit dem Text. */
+.tl-beacon__accent {
+  width: 3px;
+  flex-shrink: 0;
+  align-self: stretch;
+}
+
+/* Die Zahl kommt erst, wenn der Rahmen fast rund ist — nie aus scale(0). */
+.tl-beacon__count {
+  opacity: 0;
+  transform: scale(0.72);
+  transition:
+    opacity 160ms var(--ease-out-strong) 110ms,
+    transform 180ms var(--ease-out-strong) 110ms;
+}
+
+.tl-beacon[data-phase="counter"] .tl-beacon__count {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* ========================================================================== */
@@ -284,6 +384,35 @@
 }
 
 /* ========================================================================== */
+/*  Kurzer Eingang für frisch montierte Elemente                              */
+/* ========================================================================== */
+
+/*
+ * Nach einem Zoomschritt kommen Elemente dazu, die vorher in einem Cluster
+ * steckten oder keine Spur bekamen. Sie sollen erscheinen, nicht aufpoppen:
+ * 160 ms Deckkraft und 4 px Weg — mehr würde beim Zoomen selbst zur Bewegung.
+ * Beim Pannen läuft der Eingang unsichtbar ab, weil Marker schon 20 % der
+ * Bildbreite vor dem Rand montiert werden.
+ */
+@keyframes tl-appear {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tl-appear {
+  animation: tl-appear 160ms var(--ease-out-strong) backwards;
+}
+.tl-appear-card {
+  animation: tl-appear 180ms var(--ease-out-strong) backwards;
+}
+
+/* ========================================================================== */
 /*  Ladezustand                                                               */
 /* ========================================================================== */
 
@@ -316,11 +445,123 @@
   .tl-cluster:hover,
   .tl-cluster:active,
   .tl-iconbtn:active,
+  .tl-beacon:hover,
+  .tl-beacon:active,
+  .tl-beacon__count,
   .tl-zoom-btn:active .tl-zoom-btn__glyph {
     transform: none;
   }
 
   .tl-skel {
     opacity: 0.7;
+  }
+}
+
+/* ========================================================================== */
+/*  Vollbild-Galerie — Eingang 200 ms, Ausgang 140 ms                         */
+/*  Eigener Präfix `lb-`; alles hier gehört zu ImageLightbox + Bildvorschau.  */
+/* ========================================================================== */
+
+@keyframes lb-root-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes lb-root-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* Der Bildwechsel blendet nur über — die Querbewegung gehört dem Finger. */
+@keyframes lb-img-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lb-root {
+  animation: lb-root-in 200ms var(--ease-out-strong) both;
+  /* Kein `touch-action` hier: der Wert würde sich mit dem der Bühne
+     verschneiden und das Aufziehen zum Vergrößern mit abschalten. */
+  overscroll-behavior: contain;
+}
+.lb-root[data-state="closing"] {
+  animation: lb-root-out 140ms var(--ease-out-strong) both;
+}
+
+/* Wischen nach links/rechts wertet die Galerie selbst aus; Aufziehen zum
+   Vergrößern bleibt dem Browser. */
+.lb-stage {
+  touch-action: pinch-zoom;
+}
+
+.lb-img {
+  transition: transform 220ms var(--ease-out-strong);
+  animation: lb-img-in 180ms var(--ease-out-strong) both;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Während der Wischgeste klebt das Bild am Finger — ohne Nachlauf. */
+.lb-img[data-dragging="true"] {
+  transition: none;
+}
+
+/* -------------------------------------------------------------- Pfeile --- */
+
+.lb-nav {
+  transition:
+    transform 140ms var(--ease-out-strong),
+    background-color 140ms ease,
+    opacity 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lb-nav:hover:not(:disabled) {
+    background-color: var(--color-navy-soft);
+    transform: scale(1.06);
+  }
+}
+
+.lb-nav:active:not(:disabled) {
+  transform: scale(0.92);
+  transition-duration: 100ms;
+}
+
+/* ------------------------------------------- Bilder im Eintrag (Auslöser) - */
+
+/* Hero und Kacheln beschneiden ihr Bild — der leichte Zoom bleibt im Rahmen. */
+.lb-open > img {
+  transition: transform 220ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lb-open:hover > img {
+    transform: scale(1.035);
+  }
+}
+
+.lb-open:active > img {
+  transform: scale(0.99);
+  transition-duration: 120ms;
+}
+
+/* ---------------------------------------------------- Reduzierte Bewegung - */
+
+@media (prefers-reduced-motion: reduce) {
+  .lb-nav:hover:not(:disabled),
+  .lb-nav:active:not(:disabled),
+  .lb-open:hover > img,
+  .lb-open:active > img {
+    transform: none;
   }
 }

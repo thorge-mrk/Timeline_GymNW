@@ -1,23 +1,24 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState, type CSSProperties } from "react";
 import SchoolMark from "@/components/SchoolMark";
 import { categoryById } from "@/lib/categories";
 import { formatEntryDate } from "@/lib/dates";
 import { publicUrl } from "@/lib/supabase";
 import type { Entry } from "@/lib/types";
-import {
-  MILESTONE_CONNECTOR,
-  MILESTONE_LANE_GAP,
-  type MilestoneLayout,
-} from "@/lib/timelinePosition";
+import type { MilestoneLayout, Side } from "@/lib/timelinePosition";
 
 interface MilestoneCardProps {
   entry: Entry;
   /** Ankerpunkt auf der Achse (Content-Pixel). */
   x: number;
   left: number;
-  lane: number;
+  /** Ober- oder unterhalb der Achse. */
+  side: Side;
+  /** Abstand Achse → achsnahe Kante der Karte (= Länge der Verbindungslinie). */
+  offset: number;
+  /** Höhe der Zeichenfläche und y-Position der Achse. */
+  height: number;
   axisY: number;
   layout: MilestoneLayout;
   highlighted: boolean;
@@ -27,10 +28,24 @@ interface MilestoneCardProps {
 }
 
 /**
- * Große Meilenstein-Karte UNTER der Achse.
+ * Die Verbindungslinie ist lang — sie führt an den Marker-Spuren vorbei bis zur
+ * Karte. Damit sie dabei nicht als Strich durchs Bild schneidet, ist sie an der
+ * Achse satt, in der Marker-Zone fast unsichtbar und an der Karte wieder etwas
+ * kräftiger: Anfang und Ende der Beziehung sind sichtbar, der Weg dazwischen
+ * hält sich zurück.
+ */
+function connectorGradient(side: Side): string {
+  const direction = side === "above" ? "to top" : "to bottom";
+  return `linear-gradient(${direction},
+    color-mix(in srgb, var(--color-fox) 78%, transparent) 0%,
+    color-mix(in srgb, var(--color-fox) 10%, transparent) 55%,
+    color-mix(in srgb, var(--color-fox) 45%, transparent) 100%)`;
+}
+
+/**
+ * Große Meilenstein-Karte — je nach Platz OBER- oder UNTERHALB der Achse.
  *
- * Aufbau (beide Zustände teilen sich dieselbe Grammatik):
- *   · feine Navy-Kopfleiste als Deckel
+ * Aufbau (alle Varianten teilen sich dieselbe Grammatik):
  *   · Kopfbereich — entweder das Bild mit weichem Verlauf für die Lesbarkeit
  *     oder, wenn kein Bild da ist, warmes Papier mit dem Schul-Signet als
  *     Wasserzeichen. In beiden Fällen sitzt die Jahreszahl als ruhige
@@ -43,16 +58,15 @@ function MilestoneCard({
   entry,
   x,
   left,
-  lane,
+  side,
+  offset,
+  height,
   axisY,
   layout,
   highlighted,
   enterDelay,
   onSelect,
 }: MilestoneCardProps) {
-  const top =
-    axisY + MILESTONE_CONNECTOR + lane * (layout.height + MILESTONE_LANE_GAP);
-  const connectorHeight = top - axisY;
   const imageUrl = entry.image_path
     ? publicUrl("entry-images", entry.image_path)
     : null;
@@ -61,22 +75,42 @@ function MilestoneCard({
   const isFull = layout.variant === "full";
   const category = categoryById(entry.category);
 
-  // Der gestaffelte Eingang und der Puls der Hervorhebung sind beides
-  // Animationen — sie dürfen sich nicht gegenseitig überschreiben.
-  const entering = enterDelay !== null && !highlighted;
+  /*
+   * Eingang einmal beim Montieren festlegen und nach dem Lauf abräumen —
+   * siehe EntryMarker: ein Klassenwechsel würde die Animation erneut starten,
+   * und zwei `animation`-Regeln auf einem Element verdrängen sich.
+   */
+  const [enter, setEnter] = useState<{
+    className: string;
+    delay: number | null;
+  }>(() => {
+    if (highlighted) return { className: "", delay: null };
+    if (enterDelay !== null) {
+      return { className: "tl-enter-card", delay: enterDelay };
+    }
+    return { className: "tl-appear-card", delay: null };
+  });
+
+  /** Achsnahe Kante: oben von unten gemessen, unten von oben. */
+  const anchorEdge: CSSProperties =
+    side === "above"
+      ? { bottom: height - axisY + offset }
+      : { top: axisY + offset };
+
+  const connectorEdge: CSSProperties =
+    side === "above" ? { bottom: height - axisY } : { top: axisY };
 
   return (
     <>
-      {/* Achse → Karte: oben satt, unten ausklingend */}
+      {/* Achse → Karte: an der Achse satt, unterwegs zurückhaltend */}
       <span
         aria-hidden="true"
         className="pointer-events-none absolute w-px"
         style={{
           left: x,
-          top: axisY,
-          height: connectorHeight,
-          background:
-            "linear-gradient(to bottom, color-mix(in srgb, var(--color-fox) 75%, transparent), color-mix(in srgb, var(--color-fox) 22%, transparent))",
+          ...connectorEdge,
+          height: offset,
+          background: connectorGradient(side),
         }}
       />
       <span
@@ -91,24 +125,24 @@ function MilestoneCard({
         aria-label={`Meilenstein: ${entry.title}, ${formatEntryDate(entry)}`}
         className={`tl-milestone card absolute cursor-pointer overflow-hidden p-0 text-left ${
           highlighted ? "tl-milestone--active animate-pulse-ring" : ""
-        } ${entering ? "tl-enter-card" : ""}`}
+        } ${enter.className}`}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget && enter.className) {
+            setEnter({ className: "", delay: null });
+          }
+        }}
         style={{
           left,
-          top,
+          ...anchorEdge,
           width: layout.width,
           height: layout.height,
-          ...(entering ? { animationDelay: `${enterDelay}ms` } : null),
+          ...(enter.delay !== null
+            ? { animationDelay: `${enter.delay}ms` }
+            : null),
         }}
       >
-        {/* Kopfleiste: die Karte bekommt einen Deckel und damit eine Kante.
-            `z-10`, weil der Kopfbereich darunter ebenfalls positioniert ist. */}
-        <span
-          aria-hidden="true"
-          className="absolute inset-x-0 top-0 z-10 h-[3px] bg-navy"
-        />
-
         {isPill ? (
-          <div className="flex h-full items-center gap-2.5 px-3.5 pt-[3px]">
+          <div className="flex h-full items-center gap-2.5 px-3.5">
             <span className="shrink-0 text-[12px] font-bold text-navy tabular-nums">
               {entry.year}
             </span>
