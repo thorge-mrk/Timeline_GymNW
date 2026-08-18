@@ -329,8 +329,15 @@
   width: 48px;
   height: 48px;
   border-radius: 999px;
+  /*
+   * Der Kreis steht an einer festen Stelle, der Zeitstrahl darunter bewegt
+   * sich — irgendwann liegt er also auf einer Karte. Ein schmaler Papierrand
+   * schiebt ihn sichtbar eine Ebene nach oben: Er klebt dann nicht am Text,
+   * sondern schwebt darüber, so wie die Zoom-Leiste unten rechts.
+   */
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--color-fox) 55%, transparent),
+    0 0 0 3px var(--color-paper),
+    0 0 0 5px color-mix(in srgb, var(--color-fox) 55%, transparent),
     var(--shadow-pop);
   transition: transform 160ms var(--ease-out-strong);
 }
