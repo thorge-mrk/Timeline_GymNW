@@ -161,7 +161,13 @@ export default function SettingsMenu() {
     setOpen(true);
   }, []);
 
-  /** `returnFocus`: nur wenn niemand anderes den Fokus schon übernommen hat. */
+  /**
+   * `returnFocus` holt den Fokus sofort ans Zahnrad zurück (Escape, zweiter
+   * Klick aufs Zahnrad). Bei einem Klick daneben wartet die Rückgabe bis zum
+   * Ende des Ausgangs — und findet nur statt, wenn den Fokus bis dahin niemand
+   * anderes übernommen hat. Sonst würde ein angeklicktes Eingabefeld ihn gleich
+   * wieder verlieren.
+   */
   const closeMenu = useCallback((returnFocus: boolean) => {
     if (!openRef.current || closingRef.current) return;
     closingRef.current = true;
@@ -169,10 +175,18 @@ export default function SettingsMenu() {
     if (returnFocus) triggerRef.current?.focus();
     exitTimer.current = window.setTimeout(
       () => {
+        const active = document.activeElement;
+        const nobodyElseHasIt =
+          !active ||
+          active === document.body ||
+          popRef.current?.contains(active) === true;
+
         openRef.current = false;
         closingRef.current = false;
         setOpen(false);
         setClosing(false);
+
+        if (nobodyElseHasIt) triggerRef.current?.focus();
       },
       prefersReducedMotion() ? 0 : EXIT_MS
     );
@@ -276,6 +290,17 @@ export default function SettingsMenu() {
     items[next]?.focus();
   }
 
+  /** Pfeil nach unten/oben öffnet das Menü — wie bei einem Menüknopf üblich. */
+  function onTriggerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    if (openRef.current && !closingRef.current) {
+      popRef.current?.querySelector<HTMLElement>(ITEM_SELECTOR)?.focus();
+      return;
+    }
+    openMenu();
+  }
+
   /**
    * Wandert der Fokus per Tabulator aus dem Menü, schließt es — ohne ihn
    * zurückzuholen, sonst käme man nie weiter. Ein leeres `relatedTarget`
@@ -295,6 +320,7 @@ export default function SettingsMenu() {
         ref={triggerRef}
         type="button"
         onClick={toggleMenu}
+        onKeyDown={onTriggerKeyDown}
         aria-label="Einstellungen"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -351,7 +377,7 @@ export default function SettingsMenu() {
             />
 
             {!settings.realtime && (
-              <div className="animate-fade-up px-3 pt-1.5 pb-1">
+              <div role="none" className="animate-fade-up px-3 pt-1.5 pb-1">
                 <button
                   type="button"
                   role="menuitem"
