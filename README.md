@@ -33,19 +33,39 @@ dazu Open Sans und weiche Kartenschatten.
   Beim Hineinzoomen wird die Achse feiner: Jahrzehnte → Jahre → Monate. Gerendert wird
   nicht per CSS-Skalierung, sondern echt neu positioniert — Text bleibt in jeder Zoomstufe
   gestochen scharf.
-- **Meilensteine mit Bildern** — große Karten unterhalb der Achse für die wichtigen
-  Ereignisse der Schulgeschichte, gepflegt über ein Admin-Konto.
-- **Kategorien + Klassen-Filter** — Filter-Chips für Schule, Schüler, Lehrer, Ehemalige,
-  Sonstiges; bei „Schüler“ kann zusätzlich nach Klasse bzw. Jahrgang gefiltert werden
-  („8a“, „Abi 1996“).
+- **Drei Stufen der Wichtigkeit** — je nach Rang wird ein Eintrag anders dargestellt:
+
+  | Stufe | Wer darf das? | Darstellung auf dem Zeitstrahl |
+  | --- | --- | --- |
+  | **Meilenstein** | nur `admin` | große Bildkarte mit Jahreszahl |
+  | **Wichtig** | `admin` **und** `editor` | mittelgroße Karte mit Bild |
+  | normal | alle Konten | farbige Pille |
+
+  Wird der Platz eng, stuft der Zeitstrahl von unten herunter: erst normale Einträge,
+  dann wichtige — Meilensteine bleiben am längsten groß.
+- **Titelbild + Bildergalerie** — ein Titelbild erscheint auf dem Zeitstrahl und oben im
+  Eintrag; weitere Bilder (bis zu 12) lassen sich anhängen und im Vollbild durchblättern
+  (Pfeile, Wischen, Tastatur).
+- **Kategorien + Klassen-Filter** — Filter-Chips für Schule, Schüler, Lehrkräfte,
+  Ehemalige, Sonstiges; bei „Schüler“ zusätzlich nach Klasse bzw. Jahrgang („8a“,
+  „Abi 1996“).
+- **Schreiben wie in einem Textprogramm** — Überschriften, Aufzählungen sowie fett und
+  kursiv lassen sich direkt im Eingabefeld setzen. Gespeichert wird schlichter Text mit
+  wenigen Markierungen, dargestellt wird er aus sicheren Bausteinen — fremdes HTML aus der
+  Zwischenablage kann nicht durchrutschen.
 - **Smarte Datumseingabe** — es genügt das Jahr. `1996`, `3.1996` und `12.3.1996` werden
   automatisch verstanden und live als „1996“ / „März 1996“ / „12. März 1996“ zurückgemeldet.
   Nur-Jahr-Einträge landen in der Jahresmitte.
 - **Live-Updates ohne Reload** — neue Einträge erscheinen sofort bei allen Besuchern.
-  Dabei gilt die **3-Sekunden-Regel**: Wer gerade selbst zoomt oder schiebt (Interaktion
-  vor weniger als 3 Sekunden), wird *nicht* unterbrochen und bekommt nur einen dezenten
-  Hinweis-Toast („Neuer Eintrag: … — anzeigen“). Wer nur zuschaut, erlebt einen animierten
-  Kameraflug zum neuen Eintrag samt Puls-Highlight.
+  Unten links sammelt ein kleiner Kreis die neuen Einträge und zeigt ihre Anzahl; ein Klick
+  springt der Reihe nach zu ihnen. Rührt niemand die Seite an, fliegt die Kamera nach
+  **8 Sekunden Ruhe** von selbst zum nächsten neuen Eintrag — wer gerade zoomt oder
+  schiebt, wird dabei nie unterbrochen.
+- **Einstellungen (Zahnrad oben rechts)**
+  - **Vollbildmodus** — blendet die Fußzeile aus und fordert den Vollbildmodus des Geräts
+    an. Ideal für den Beamer in der Aula.
+  - **Live-Übertragung** — lässt sich abschalten. Dann sieht man Änderungen erst nach dem
+    Neuladen. Die Einstellung merkt sich das Gerät.
 - **Bild-Komprimierung im Browser** — Fotos werden schon auf dem Gerät auf max. 1600 px
   verkleinert und als WebP (Fallback JPEG) hochgeladen. Das spart Upload-Zeit im
   Schul-WLAN und hält den Speicherplatz klein.
@@ -140,7 +160,7 @@ to sign up“ aktiviert wird, kann sich niemand ein Konto anlegen.
 | Rolle | Darf |
 | --- | --- |
 | `admin` | **alles**: Einträge anlegen, **bearbeiten und löschen**, Meilensteine setzen, Audio-Interviews hochladen |
-| `editor` | **nur neue Einträge anlegen** — die Rolle für die iPads am Aktionstag |
+| `editor` | **neue Einträge anlegen**, auch als „Wichtig“ markiert — die Rolle für die iPads am Aktionstag |
 
 Es kann mehrere Konten jeder Rolle geben. Anonyme Besucher dürfen ausschließlich lesen.
 
@@ -315,6 +335,7 @@ Wer darf was?
 | Eintrag erstellen | ✗ | ✓ | ✓ |
 | Eintrag bearbeiten | ✗ | ✗ | ✓ |
 | Eintrag löschen | ✗ | ✗ | ✓ |
+| Eintrag als „Wichtig“ markieren | ✗ | ✓ | ✓ |
 | Meilenstein anlegen | ✗ | ✗ | ✓ |
 | Audio-Interview hochladen | ✗ | ✗ | ✓ |
 | **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |

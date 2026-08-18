@@ -15,6 +15,13 @@ function Spans({ spans }: { spans: InlineSpan[] }) {
             </strong>
           );
         }
+        if (span.kind === "boldItalic") {
+          return (
+            <strong key={i} className="font-bold text-coal italic">
+              {span.text}
+            </strong>
+          );
+        }
         if (span.kind === "italic") {
           return (
             <em key={i} className="italic">

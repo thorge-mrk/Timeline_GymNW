@@ -62,8 +62,32 @@
   }
 }
 
-/* Angeflogener Eintrag: feiner Fuchs-Ring statt lauter Farbfläche. */
-.tl-marker--active {
+/*
+ * Wichtiger Eintrag, für den gerade keine mittlere Karte passt. Er bekommt
+ * KEINEN Stern (der gehört den Meilensteinen), sondern nur einen sehr feinen
+ * Fuchs-Schimmer um die Pille — plus den Punkt-Ring in der Komponente. Eine
+ * Stufe leiser als `.tl-marker--milestone`.
+ */
+.tl-marker--important {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-fox) 22%, transparent),
+    var(--shadow-card);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-marker--important:hover {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--color-fox) 55%, transparent),
+      var(--shadow-card-lg);
+  }
+}
+
+/*
+ * Angeflogener Eintrag: feiner Fuchs-Ring statt lauter Farbfläche. Bewusst
+ * zweifach spezifisch, damit er auch die Rang-Ringe und deren Hover-Regeln
+ * überschreibt — der Puls soll niemand verdecken.
+ */
+.tl-marker.tl-marker--active {
   border-color: var(--color-fox);
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
@@ -74,18 +98,32 @@
 /*  Meilenstein-Karten (ober- wie unterhalb)                                  */
 /* ========================================================================== */
 
+/*
+ * RANDLOSES BILD.
+ *
+ * `.card` bringt einen 1-px-Rahmen mit. Weil `overflow: hidden` auf die
+ * Padding-Box beschneidet, endete das Bild bisher INNEN am Rahmen — sichtbar
+ * als heller Streifen oben und an den Seiten. Deshalb hier: kein echter
+ * Rahmen mehr (`border-width: 0`), die Kontur liegt stattdessen als Hairline
+ * nach innen im Schatten. Ergebnis: Das Bild füllt die Karte bis an die
+ * abgerundeten Ecken, die Karte behält trotzdem ihre klare Kante.
+ */
 .tl-milestone {
+  border-width: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--color-paper-line),
+    var(--shadow-card);
   transition:
     transform 180ms var(--ease-out-strong),
-    box-shadow 180ms var(--ease-out-strong),
-    border-color 140ms ease;
+    box-shadow 180ms var(--ease-out-strong);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .tl-milestone:hover {
     transform: translateY(-2px);
-    box-shadow: var(--shadow-card-lg);
-    border-color: color-mix(in srgb, var(--color-fox) 45%, var(--color-paper-line));
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--color-fox) 45%, var(--color-paper-line)),
+      var(--shadow-card-lg);
   }
 }
 
@@ -94,9 +132,32 @@
   transition-duration: 110ms;
 }
 
-.tl-milestone--active {
-  border-color: var(--color-fox);
+/*
+ * Mittelgroße Karte für wichtige Einträge. Rang-Zeichen ist ein sehr feiner
+ * Fuchs-Ring — kräftig genug, um die Karte von einer beliebigen Bildkarte zu
+ * unterscheiden, leise genug, um den Meilensteinen nicht ins Wort zu fallen.
+ */
+.tl-important {
   box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-fox) 32%, var(--color-paper-line)),
+    var(--shadow-card);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tl-important:hover {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--color-fox) 60%, var(--color-paper-line)),
+      var(--shadow-card-lg);
+  }
+}
+
+/*
+ * Angeflogene Karte. Steht ganz am Ende und ist zweifach spezifisch, damit sie
+ * sowohl die Rang-Kontur (`.tl-important`) als auch deren Hover-Regel schlägt.
+ */
+.tl-milestone.tl-milestone--active {
+  box-shadow:
+    inset 0 0 0 1px var(--color-fox),
     0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
     var(--shadow-card-lg);
 }
@@ -235,14 +296,14 @@
 }
 
 /* ========================================================================== */
-/*  Live-Meldung → Zähler-Kreis (unten links)                                 */
+/*  Zähler-Kreis für neue Einträge (unten links)                              */
 /* ========================================================================== */
 
 /*
- * Ein Element, zwei Zustände. Die Meldung fährt zum Kreis zusammen: Breite und
- * Radius wandern, der Text blendet aus, die Zahl ein. `width` zu animieren ist
- * hier die Ausnahme mit Ansage — genau diese Bewegung wird erzählt, und das
- * Element steht absolut positioniert für sich allein, der Reflow bleibt darin.
+ * Ein Kreis, sonst nichts. Er wechselt nur zwischen „da" und „nicht da" —
+ * keine Verwandlung, keine Breitenanimation, keine Textmeldung mehr. Das
+ * Touchziel ist 48 px groß (Mindestmaß 44 px) und damit auch mit dem Daumen
+ * sicher zu treffen.
  */
 
 .tl-beacon-slot {
@@ -256,7 +317,7 @@
   opacity: 0;
   transform: translateY(10px);
   visibility: hidden;
-  /* Sichtbarkeit erst NACH dem Ausblenden — sonst ist die Karte sofort weg. */
+  /* Sichtbarkeit erst NACH dem Ausblenden — sonst ist der Kreis sofort weg. */
   transition:
     opacity 180ms var(--ease-out-strong),
     transform 180ms var(--ease-out-strong),
@@ -264,36 +325,25 @@
 }
 
 .tl-beacon {
-  /* Feste Breite (vw statt %), damit die Meldung sie behält, während der
-     Rahmen schrumpft — sie wird beschnitten, nicht gequetscht. */
-  --tl-beacon-w: min(340px, calc(100vw - 2rem));
   pointer-events: auto;
-  width: var(--tl-beacon-w);
-  height: 56px;
-  border-radius: 18px;
-  overflow: hidden;
-  box-shadow: var(--shadow-pop);
-  transition:
-    width 280ms var(--ease-out-strong),
-    border-radius 280ms var(--ease-out-strong),
-    box-shadow 280ms var(--ease-out-strong),
-    transform 160ms var(--ease-out-strong);
-}
-
-.tl-beacon[data-phase="counter"] {
-  width: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
+  /*
+   * Der Kreis steht an einer festen Stelle, der Zeitstrahl darunter bewegt
+   * sich — irgendwann liegt er also auf einer Karte. Ein schmaler Papierrand
+   * schiebt ihn sichtbar eine Ebene nach oben: Er klebt dann nicht am Text,
+   * sondern schwebt darüber, so wie die Zoom-Leiste unten rechts.
+   */
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--color-fox) 55%, transparent),
+    0 0 0 3px var(--color-paper),
+    0 0 0 5px color-mix(in srgb, var(--color-fox) 55%, transparent),
     var(--shadow-pop);
+  transition: transform 160ms var(--ease-out-strong);
 }
 
-/* Der globale Fokusring rundet Buttons auf 8 px ab — hier würde das die
-   Verwandlung stören. Radius bleibt, der Ring liegt außen an. */
+/* Der globale Fokusring rundet Buttons auf 8 px ab — hier bleibt es rund. */
 .tl-beacon:focus-visible {
-  border-radius: 18px;
-}
-.tl-beacon[data-phase="counter"]:focus-visible {
   border-radius: 999px;
 }
 
@@ -303,47 +353,9 @@
   }
 }
 
-/* Kein `transition-duration`-Kurzschluss hier: der Druck würde sonst auch die
-   Verwandlung beschleunigen. 160 ms aus der Liste oben reichen völlig. */
 .tl-beacon:active {
-  transform: scale(0.97);
-}
-
-.tl-beacon__msg {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  display: flex;
-  align-items: stretch;
-  width: var(--tl-beacon-w);
-  opacity: 1;
-  transition: opacity 130ms var(--ease-out-strong);
-}
-
-.tl-beacon[data-phase="counter"] .tl-beacon__msg {
-  opacity: 0;
-}
-
-/* Kategorie-Akzent an der Kante — er geht mit dem Text. */
-.tl-beacon__accent {
-  width: 3px;
-  flex-shrink: 0;
-  align-self: stretch;
-}
-
-/* Die Zahl kommt erst, wenn der Rahmen fast rund ist — nie aus scale(0). */
-.tl-beacon__count {
-  opacity: 0;
-  transform: scale(0.72);
-  transition:
-    opacity 160ms var(--ease-out-strong) 110ms,
-    transform 180ms var(--ease-out-strong) 110ms;
-}
-
-.tl-beacon[data-phase="counter"] .tl-beacon__count {
-  opacity: 1;
-  transform: scale(1);
+  transform: scale(0.94);
+  transition-duration: 110ms;
 }
 
 /* ========================================================================== */
@@ -447,7 +459,6 @@
   .tl-iconbtn:active,
   .tl-beacon:hover,
   .tl-beacon:active,
-  .tl-beacon__count,
   .tl-zoom-btn:active .tl-zoom-btn__glyph {
     transform: none;
   }
@@ -553,6 +564,23 @@
 .lb-open:active > img {
   transform: scale(0.99);
   transition-duration: 120ms;
+}
+
+/* ------------------------------------------- Titelbild im Modalkopf ------ */
+
+/*
+ * Das Titelbild füllt den Kopf randlos aus: keine eigene Rundung, kein Rahmen,
+ * kein Abstand. Beschnitten wird es vom Modal (`overflow: hidden` + Radius),
+ * damit es oben bündig mit den runden Ecken abschließt.
+ *
+ * Der globale Fokusring rundet Buttons auf 8 px ab — an einer randlosen Fläche
+ * sähe das nach Versehen aus. Also bündig und nach innen versetzt, damit er
+ * nicht am Rand des Modals abgeschnitten wird.
+ */
+.lb-hero:focus-visible {
+  border-radius: 0;
+  outline: 2px solid var(--color-fox);
+  outline-offset: -3px;
 }
 
 /* ---------------------------------------------------- Reduzierte Bewegung - */

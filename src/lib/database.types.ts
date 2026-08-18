@@ -31,6 +31,7 @@ export type Database = {
           id: string
           image_path: string | null
           image_paths: string[]
+          is_important: boolean
           is_milestone: boolean
           month: number | null
           sort_date: string | null
@@ -51,6 +52,7 @@ export type Database = {
           id?: string
           image_path?: string | null
           image_paths?: string[]
+          is_important?: boolean
           is_milestone?: boolean
           month?: number | null
           sort_date?: string | null
@@ -71,6 +73,7 @@ export type Database = {
           id?: string
           image_path?: string | null
           image_paths?: string[]
+          is_important?: boolean
           is_milestone?: boolean
           month?: number | null
           sort_date?: string | null

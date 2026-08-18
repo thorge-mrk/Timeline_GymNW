@@ -8,10 +8,7 @@ interface TimelineAxisProps {
   /** Bruchteil-Jahr → Content-Pixel. */
   toX: (yearFraction: number) => number;
   contentWidth: number;
-  height: number;
   axisY: number;
-  /** Heutiges Datum als Bruchteil-Jahr. */
-  now: number;
 }
 
 /** Höhe des Tick-Strichs je Ebene. */
@@ -29,17 +26,17 @@ const TICK_HEIGHT: Record<AxisTick["level"], number> = {
  * Beschriftung in drei klaren Stufen — Dekaden führen (groß, fett, Navy),
  * Jahre begleiten, Monate flüstern. Alle Ziffern `tabular-nums`, damit beim
  * Zoomen nichts zappelt.
+ *
+ * Eine „Heute“-Markierung gibt es bewusst NICHT (mehr): Das Jetzt steht als
+ * echter Eintrag auf dem Zeitstrahl („55 Jahre GymNW“). Eine zweite, technische
+ * Marke daneben hätte nur erklärt, was ohnehin zu sehen ist.
  */
 function TimelineAxis({
   ticks,
   toX,
   contentWidth,
-  height,
   axisY,
-  now,
 }: TimelineAxisProps) {
-  const todayX = toX(now);
-
   return (
     <>
       {/* Gitterlinien — nur für Jahre/Dekaden, sonst wird es unruhig */}
@@ -112,30 +109,6 @@ function TimelineAxis({
         </span>
       ))}
 
-      {/* „Heute“ — schlanke Fuchs-Linie, die an den Enden ausklingt */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute top-0 w-px"
-        style={{
-          left: todayX,
-          height,
-          background:
-            "linear-gradient(to bottom, color-mix(in srgb, var(--color-fox) 6%, transparent), color-mix(in srgb, var(--color-fox) 60%, transparent) 45%, color-mix(in srgb, var(--color-fox) 6%, transparent))",
-        }}
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute rounded-full bg-fox ring-[3px] ring-paper"
-        style={{ left: todayX - 4, top: axisY - 4, width: 8, height: 8 }}
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute flex -translate-x-full items-center gap-1.5 rounded-full border border-fox/30 bg-paper/85 px-2 py-[3px] text-[10px] font-bold tracking-[0.1em] text-fox-deep uppercase"
-        style={{ left: todayX - 14, top: 10 }}
-      >
-        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-fox" />
-        Heute
-      </span>
     </>
   );
 }
