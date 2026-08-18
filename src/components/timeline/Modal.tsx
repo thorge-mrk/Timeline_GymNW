@@ -32,6 +32,14 @@ function prefersReducedMotion(): boolean {
  * Gemeinsame Modal-Hülle: Backdrop, Escape, Fokus, Schließen-Knopf.
  * Wird von EntryDetailModal und ClusterListModal genutzt.
  *
+ * Aufbau: Der Rahmen selbst scrollt NICHT — er ist eine Spalte fester Höhe mit
+ * `overflow-hidden`. Gescrollt wird nur der innere Bereich. Das hat zwei
+ * Wirkungen, die beide gewollt sind:
+ *   1. Das X liegt außerhalb des scrollenden Bereichs und bleibt bei langen
+ *      Einträgen immer erreichbar — auf dem Tablet der wichtigste Punkt.
+ *   2. Der Rahmen beschneidet seinen Inhalt an den runden Ecken. Ein Titelbild
+ *      darf dadurch randlos bis an die Kante laufen.
+ *
  * Der Ausgang läuft über `data-state="closing"`: alle Schließwege gehen durch
  * `requestClose()`, die Animation läuft, danach meldet die Hülle nach oben.
  */
@@ -42,6 +50,12 @@ export default function Modal({
   maxWidthClass = "max-w-lg",
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  /**
+   * Der scrollende Bereich. Er bekommt beim Öffnen den Fokus, damit
+   * Pfeiltasten, Bild-auf/-ab und Leertaste sofort durch lange Einträge
+   * blättern — der Rahmen selbst scrollt ja nicht mehr.
+   */
+  const bodyRef = useRef<HTMLDivElement>(null);
   /** Fokus nach dem Schließen zurückgeben. */
   const previousFocus = useRef<Element | null>(null);
   const exitTimer = useRef<number | undefined>(undefined);
@@ -62,7 +76,7 @@ export default function Modal({
   // Fokus einmalig übernehmen und beim Abbau zurückgeben.
   useEffect(() => {
     previousFocus.current = document.activeElement;
-    dialogRef.current?.focus();
+    (bodyRef.current ?? dialogRef.current)?.focus();
 
     return () => {
       window.clearTimeout(exitTimer.current);
@@ -99,13 +113,14 @@ export default function Modal({
         aria-labelledby={titleId}
         tabIndex={-1}
         data-state={state}
-        className={`tl-modal card relative max-h-[86dvh] w-full overflow-y-auto shadow-(--shadow-pop) outline-none ${maxWidthClass}`}
+        className={`tl-modal card relative flex max-h-[86dvh] w-full flex-col overflow-hidden shadow-(--shadow-pop) outline-none ${maxWidthClass}`}
       >
+        {/* Steht außerhalb des scrollenden Bereichs — scrollt also nie weg. */}
         <button
           type="button"
           onClick={requestClose}
           aria-label="Schließen"
-          className="tl-iconbtn absolute top-3 right-3 z-10 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-paper-line bg-paper-card/95 text-coal-soft shadow-(--shadow-card) hover:text-coal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+          className="tl-iconbtn absolute top-3 right-3 z-20 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-paper-line bg-paper-card/95 text-coal-soft shadow-(--shadow-card) backdrop-blur-sm hover:text-coal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
         >
           <svg
             width="16"
@@ -122,7 +137,19 @@ export default function Modal({
             />
           </svg>
         </button>
-        {children}
+
+        {/*
+          `min-h-0` erlaubt dem Bereich, unter seine Inhaltshöhe zu schrumpfen —
+          erst dadurch greift `max-h` oben und hier entsteht der Scrollbalken.
+          Kein Padding: das Titelbild soll bündig an der Kante sitzen.
+        */}
+        <div
+          ref={bodyRef}
+          tabIndex={-1}
+          className="min-h-0 overflow-y-auto overscroll-contain outline-none"
+        >
+          {children}
+        </div>
       </div>
     </div>
   );

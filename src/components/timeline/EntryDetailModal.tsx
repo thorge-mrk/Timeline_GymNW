@@ -34,51 +34,49 @@ async function removeQuietly(bucket: string, paths: (string | null)[]) {
   }
 }
 
-function MagnifierIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="7" cy="7" r="4.3" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M10.3 10.3 13.4 13.4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function StackIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <rect
-        x="4.6"
-        y="2.3"
-        width="9.1"
-        height="7.2"
-        rx="1.6"
-        stroke="currentColor"
-        strokeWidth="1.4"
-      />
-      <path
-        d="M11.4 12.2a1.6 1.6 0 0 1-1.6 1.5H3.9a1.6 1.6 0 0 1-1.6-1.5V6.6c0-.6.4-1.1 1-1.4"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+/**
+ * Rang des Eintrags — drei Stufen, die sich gegenseitig ausschließen (die
+ * Datenbank erzwingt das per CHECK, hier sichert die if-Kette es zusätzlich ab):
+ *
+ *   Meilenstein  nur Admin-Konten — Stern in Fuchs, das lauteste Zeichen
+ *   Wichtig      auch Eintrag-Konten — dieselbe Farbfamilie, aber leiser:
+ *                Punkt statt Stern, zurückhaltender Rahmen
+ *   normal       gar kein Badge — Ruhe ist der Regelfall
+ */
+function RankBadge({ entry }: { entry: Entry }) {
+  if (entry.is_milestone) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-fox/40 bg-fox-soft px-2.5 py-1 text-[11px] font-semibold text-fox-deep">
+        <span aria-hidden="true">★</span> Meilenstein
+      </span>
+    );
+  }
+  if (entry.is_important) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-fox/20 bg-fox-soft px-2.5 py-1 text-[11px] font-semibold text-fox-deep">
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 rounded-full bg-fox-deep"
+        />
+        Wichtig
+      </span>
+    );
+  }
+  return null;
 }
 
 /**
  * Detailansicht eines Eintrags.
  *
- * Aufbau von oben nach unten: schmale Farbkante der Kategorie, Titelbild,
- * Streifen mit den weiteren Bildern, Kopf (Kategorie-Badge, Titel, Datum),
- * formatierter Text, Tonaufnahme, Video — und ganz unten, nur für Admins,
- * Bearbeiten und Löschen.
+ * Aufbau von oben nach unten: randloses Titelbild, Kopf (Kategorie-Badge und
+ * ggf. Rang-Badge, Titel, Datum, Klasse/Autor), Text, weitere Bilder, Ton,
+ * Video — und ganz unten, nur für Admins, Bearbeiten und Löschen.
  *
- * Die Fläche bleibt bewusst Papier: Farbe tragen nur die Kante und das Badge.
+ * Das Titelbild ist ein Button und öffnet die Galerie; auf dem Bild klebt
+ * bewusst nichts — ein Bild, das man antippen kann, erklärt sich selbst. Die
+ * Bildanzahl steht unauffällig über den Vorschau-Kacheln.
+ *
+ * Die Fläche bleibt Papier: Farbe tragen nur die Badges im Kopf.
  */
 export default function EntryDetailModal({
   entry,
@@ -163,13 +161,12 @@ export default function EntryDetailModal({
   return (
     <>
       <Modal titleId={titleId} onClose={onClose}>
-        {/* Feine Farbkante als Deckel: die Gruppe ist sofort zu erkennen. */}
-        <span
-          aria-hidden="true"
-          className="block h-[3px] w-full rounded-t-2xl"
-          style={{ backgroundColor: category.color }}
-        />
-
+        {/* ---------------------------------------------------- Titelbild */}
+        {/*
+          Randlos: keine eigene Rundung, kein Rahmen, kein Abstand. Beschnitten
+          wird das Bild vom Modal selbst (`overflow-hidden` + `rounded-2xl`),
+          deshalb schließt es oben bündig mit den Ecken ab.
+        */}
         {heroUrl && (
           <button
             type="button"
@@ -179,120 +176,119 @@ export default function EntryDetailModal({
                 ? `Bildergalerie öffnen — ${imageUrls.length} Bilder`
                 : "Bild groß ansehen"
             }
-            className="lb-open relative block w-full cursor-pointer overflow-hidden rounded-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-fox"
+            className="lb-open lb-hero block w-full cursor-pointer overflow-hidden"
           >
             <img
               src={heroUrl}
               alt={entry.title}
-              /* Sofort sichtbar, sobald der Eintrag aufgeht — „lazy" ließe das
+              /* Sofort sichtbar, sobald der Eintrag aufgeht — „lazy“ ließe das
                  Titelbild sichtbar nachpoppen. */
               loading="eager"
               className="block max-h-72 w-full bg-paper-sunk object-cover"
             />
-            <span className="pointer-events-none absolute right-3 bottom-3 inline-flex items-center gap-1.5 rounded-full bg-navy/60 px-2.5 py-1 text-[11px] font-semibold text-paper backdrop-blur-sm">
-              {imageUrls.length > 1 ? <StackIcon /> : <MagnifierIcon />}
-              {imageUrls.length > 1
-                ? `${imageUrls.length} Bilder`
-                : "Vergrößern"}
-            </span>
           </button>
         )}
 
         <div className="p-5 sm:p-6">
-          {/* -------------------------------------------- Weitere Bilder */}
-          {visibleTiles.length > 0 && (
-            <div className="mb-5 grid grid-cols-4 gap-2 sm:grid-cols-6">
-              {visibleTiles.map((url, i) => {
-                const position = i + 2; // 1 ist das Titelbild
-                const showNarrowRest = i === TILES_NARROW - 1 && restNarrow > 0;
-                const showWideRest = i === TILES_WIDE - 1 && restWide > 0;
-                return (
-                  <button
-                    key={imagePaths[i + 1]}
-                    type="button"
-                    onClick={(event) => openLightbox(i + 1, event.currentTarget)}
-                    aria-label={`Bild ${position} von ${imageUrls.length} groß ansehen`}
-                    className={`lb-open relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-paper-line bg-paper-sunk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox ${
-                      i >= TILES_NARROW ? "hidden sm:block" : ""
-                    }`}
-                  >
-                    <img
-                      src={url}
-                      alt={`${entry.title} — Bild ${position}`}
-                      loading="lazy"
-                      className="h-full w-full object-cover"
-                    />
-                    {showNarrowRest && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute inset-0 flex items-center justify-center bg-navy/60 text-sm font-bold text-paper tabular-nums sm:hidden"
-                      >
-                        +{restNarrow}
-                      </span>
-                    )}
-                    {showWideRest && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute inset-0 hidden items-center justify-center bg-navy/60 text-sm font-bold text-paper tabular-nums sm:flex"
-                      >
-                        +{restWide}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* ---------------------------------------------------- Kopf */}
-          <div className={`flex flex-wrap items-center gap-2 ${headPad}`}>
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-              style={categoryPillStyle(entry.category)}
-            >
+          {/* --------------------------------------------------------- Kopf */}
+          {/* Titel führt, Datum begleitet, Herkunft flüstert. */}
+          <header className={headPad}>
+            <div className="flex flex-wrap items-center gap-2">
               <span
-                aria-hidden="true"
-                className="h-1.5 w-1.5 rounded-full"
-                style={{ backgroundColor: category.color }}
-              />
-              {category.label}
-            </span>
-
-            {entry.is_milestone && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-fox/40 bg-fox-soft px-2.5 py-1 text-[11px] font-semibold text-fox-deep">
-                <span aria-hidden="true">★</span> Meilenstein
+                className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                style={categoryPillStyle(entry.category)}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: category.color }}
+                />
+                {category.label}
               </span>
-            )}
-          </div>
 
-          <h2
-            id={titleId}
-            className={`mt-2.5 text-xl leading-snug font-bold text-coal ${headPad}`}
-          >
-            {entry.title}
-          </h2>
+              <RankBadge entry={entry} />
+            </div>
 
-          {/* Meta-Zeile: Datum führt, alles andere begleitet leise. */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
-            <span className="font-semibold text-coal tabular-nums">
+            <h2
+              id={titleId}
+              className="mt-3 text-xl leading-snug font-bold text-coal"
+            >
+              {entry.title}
+            </h2>
+
+            <p className="mt-1.5 text-sm font-semibold text-coal-soft tabular-nums">
               {formatEntryDate(entry)}
-            </span>
-            {meta && (
-              <>
-                <span aria-hidden="true" className="h-3.5 w-px bg-paper-line" />
-                <span className="text-coal-faint">{meta}</span>
-              </>
-            )}
-          </div>
+            </p>
+
+            {meta && <p className="mt-1 text-xs text-coal-faint">{meta}</p>}
+          </header>
 
           {/* ----------------------------------------- Formatierter Text */}
           {entry.description && (
-            <RichText text={entry.description} className="mt-4 text-coal" />
+            <RichText text={entry.description} className="mt-5 text-coal" />
+          )}
+
+          {/* ------------------------------------------- Weitere Bilder */}
+          {visibleTiles.length > 0 && (
+            <section className="mt-6">
+              {/* Die Anzahl steht hier — leise unter dem Bild statt darauf. */}
+              <div className="mb-2 flex items-baseline justify-between gap-3">
+                <h3 className="label mb-0">Weitere Bilder</h3>
+                <span className="hint tabular-nums">
+                  {imageUrls.length} Bilder
+                </span>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                {visibleTiles.map((url, i) => {
+                  const position = i + 2; // 1 ist das Titelbild
+                  const showNarrowRest =
+                    i === TILES_NARROW - 1 && restNarrow > 0;
+                  const showWideRest = i === TILES_WIDE - 1 && restWide > 0;
+                  return (
+                    <button
+                      key={imagePaths[i + 1]}
+                      type="button"
+                      onClick={(event) =>
+                        openLightbox(i + 1, event.currentTarget)
+                      }
+                      aria-label={`Bild ${position} von ${imageUrls.length} groß ansehen`}
+                      className={`lb-open relative aspect-square cursor-pointer overflow-hidden rounded-xl border border-paper-line bg-paper-sunk focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox ${
+                        i >= TILES_NARROW ? "hidden sm:block" : ""
+                      }`}
+                    >
+                      <img
+                        src={url}
+                        alt={`${entry.title} — Bild ${position}`}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                      {showNarrowRest && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 flex items-center justify-center bg-navy/60 text-sm font-bold text-paper tabular-nums sm:hidden"
+                        >
+                          +{restNarrow}
+                        </span>
+                      )}
+                      {showWideRest && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 hidden items-center justify-center bg-navy/60 text-sm font-bold text-paper tabular-nums sm:flex"
+                        >
+                          +{restWide}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {/* ---------------------------------------------- Tonaufnahme */}
           {audioUrl && (
-            <section className="mt-5">
+            <section className="mt-6">
               <h3 className="label">Interview anhören</h3>
               <div className="rounded-xl border border-paper-line bg-paper-sunk p-3">
                 <audio
@@ -312,12 +308,13 @@ export default function EntryDetailModal({
               href={entry.video_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-ghost mt-5 w-full"
+              className="btn-ghost mt-6 w-full"
             >
               Video ansehen
             </a>
           )}
 
+          {/* ------------------------------------- Admin-Aktionen (nur Admin) */}
           {isAdmin && (
             <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-paper-line pt-4">
               <Link href={`/eintragen/?id=${entry.id}`} className="btn-ghost">

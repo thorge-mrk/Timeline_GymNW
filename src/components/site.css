@@ -1,0 +1,178 @@
+/*
+ * Rahmen der Seite: Kopfzeile, Fußzeile und das Einstellungsmenü.
+ *
+ * Ergänzt globals.css und enthält ausschließlich, was sich mit Tailwind-
+ * Utilities nicht sauber ausdrücken lässt: eigene Kurven, Zustände über
+ * `data-*`, Keyframes mit eigenem Ein- UND Ausgang sowie Hover-Effekte, die
+ * nur auf echten Zeigergeräten laufen. Animiert werden nur `transform` und
+ * `opacity` (plus Farben) — nie `all`.
+ *
+ * Die Selektoren sind bewusst zweistufig (.klasse:hover = 0,2,0), damit sie
+ * unabhängig von der Ladereihenfolge über den Tailwind-Utilities liegen.
+ */
+
+/* ========================================================================== */
+/*  Kopfzeile — das Signet reagiert minimal, aber nur auf Zeigergeräten        */
+/*                                                                            */
+/*  Diese drei Klassen (.brand-mark, .brand-link, .link-quiet) standen früher  */
+/*  in form.css, als Kopf- und Fußzeile noch in layout.tsx lagen. Sie gehören  */
+/*  jetzt hierher, zu SiteHeader/SiteFooter. Die alten, wortgleichen Kopien    */
+/*  dort stören nicht: gleiche Regeln, gleiches Ergebnis — egal wer gewinnt.   */
+/* ========================================================================== */
+
+.brand-mark {
+  transition: transform 160ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .brand-link:hover .brand-mark {
+    transform: translateY(-1px) scale(1.06);
+  }
+}
+.brand-link:active .brand-mark {
+  transform: scale(0.94);
+}
+
+/* ========================================================================== */
+/*  Fußzeile — ruhige Links mit großzügiger Tippfläche                         */
+/* ========================================================================== */
+
+.link-quiet {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 0.375rem;
+  border-radius: 0.5rem;
+  color: var(--color-coal-soft);
+  transition: color 150ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .link-quiet:hover {
+    color: var(--color-coal);
+  }
+}
+
+/* ========================================================================== */
+/*  Zahnrad-Knopf in der (dunklen) Kopfzeile                                   */
+/*  44 x 44 px Tippfläche; beim Öffnen dreht das Rad um eine Zahnteilung       */
+/*  (45° bei acht Zähnen) — es sieht danach gleich aus, die Bewegung ist       */
+/*  trotzdem klar zu sehen.                                                    */
+/* ========================================================================== */
+
+.gear-btn {
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    transform 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .gear-btn:hover {
+    background-color: var(--color-navy-soft);
+    color: var(--color-paper);
+  }
+}
+.gear-btn:active {
+  transform: scale(0.94);
+  transition-duration: 100ms;
+}
+/* Solange das Menü offen ist, bleibt der Knopf sichtbar „gedrückt“. */
+.gear-btn[aria-expanded="true"] {
+  background-color: var(--color-navy-soft);
+  color: var(--color-paper);
+}
+.gear-btn .gear-btn__icon {
+  transition: transform 220ms var(--ease-out-strong);
+}
+.gear-btn[aria-expanded="true"] .gear-btn__icon {
+  transform: rotate(45deg);
+}
+
+/* ========================================================================== */
+/*  Einstellungs-Popover                                                       */
+/*  Es wächst aus seinem Auslöser: der Ursprung liegt oben rechts, direkt      */
+/*  unter dem Zahnrad — nicht in der Mitte (das gilt nur für Dialoge).         */
+/* ========================================================================== */
+
+@keyframes settings-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes settings-pop-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.97);
+  }
+}
+
+.settings-pop {
+  transform-origin: top right;
+  animation: settings-pop-in 200ms var(--ease-out-strong) both;
+}
+/* Der Ausgang ist kürzer als der Eingang — und nimmt keine Klicks mehr an. */
+.settings-pop[data-state="closing"] {
+  pointer-events: none;
+  animation: settings-pop-out 140ms var(--ease-out-strong) both;
+}
+
+/* ========================================================================== */
+/*  Menüzeilen mit Schalter                                                    */
+/* ========================================================================== */
+
+.settings-item {
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    transform 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .settings-item:hover {
+    background-color: var(--color-paper-sunk);
+  }
+}
+.settings-item:active {
+  transform: scale(0.985);
+  transition-duration: 100ms;
+}
+
+/* Der Schalter selbst: Spur + Knauf, beides nur über transform/Farbe bewegt. */
+.settings-switch {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  width: 2.5rem;
+  height: 1.5rem;
+  padding: 2px;
+  border: 1px solid var(--color-paper-line);
+  border-radius: 999px;
+  background-color: var(--color-paper-sunk);
+  transition:
+    background-color 180ms var(--ease-out-strong),
+    border-color 180ms var(--ease-out-strong);
+}
+.settings-switch[data-on="true"] {
+  background-color: var(--color-fox);
+  border-color: var(--color-fox-deep);
+}
+.settings-switch__knob {
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 999px;
+  background-color: var(--color-paper-card);
+  box-shadow: var(--shadow-card);
+  transform: translateX(0);
+  transition: transform 180ms var(--ease-out-strong);
+}
+/* Spur 40 px − 2 × (1 px Rahmen + 2 px Polster) − 18 px Knauf = 16 px Weg. */
+.settings-switch[data-on="true"] .settings-switch__knob {
+  transform: translateX(1rem);
+}

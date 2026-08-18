@@ -555,6 +555,23 @@
   transition-duration: 120ms;
 }
 
+/* ------------------------------------------- Titelbild im Modalkopf ------ */
+
+/*
+ * Das Titelbild füllt den Kopf randlos aus: keine eigene Rundung, kein Rahmen,
+ * kein Abstand. Beschnitten wird es vom Modal (`overflow: hidden` + Radius),
+ * damit es oben bündig mit den runden Ecken abschließt.
+ *
+ * Der globale Fokusring rundet Buttons auf 8 px ab — an einer randlosen Fläche
+ * sähe das nach Versehen aus. Also bündig und nach innen versetzt, damit er
+ * nicht am Rand des Modals abgeschnitten wird.
+ */
+.lb-hero:focus-visible {
+  border-radius: 0;
+  outline: 2px solid var(--color-fox);
+  outline-offset: -3px;
+}
+
 /* ---------------------------------------------------- Reduzierte Bewegung - */
 
 @media (prefers-reduced-motion: reduce) {
