@@ -82,8 +82,12 @@
   }
 }
 
-/* Angeflogener Eintrag: feiner Fuchs-Ring statt lauter Farbfläche. */
-.tl-marker--active {
+/*
+ * Angeflogener Eintrag: feiner Fuchs-Ring statt lauter Farbfläche. Bewusst
+ * zweifach spezifisch, damit er auch die Rang-Ringe und deren Hover-Regeln
+ * überschreibt — der Puls soll niemand verdecken.
+ */
+.tl-marker.tl-marker--active {
   border-color: var(--color-fox);
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
@@ -128,13 +132,6 @@
   transition-duration: 110ms;
 }
 
-.tl-milestone--active {
-  box-shadow:
-    inset 0 0 0 1px var(--color-fox),
-    0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
-    var(--shadow-card-lg);
-}
-
 /*
  * Mittelgroße Karte für wichtige Einträge. Rang-Zeichen ist ein sehr feiner
  * Fuchs-Ring — kräftig genug, um die Karte von einer beliebigen Bildkarte zu
@@ -152,6 +149,17 @@
       inset 0 0 0 1px color-mix(in srgb, var(--color-fox) 60%, var(--color-paper-line)),
       var(--shadow-card-lg);
   }
+}
+
+/*
+ * Angeflogene Karte. Steht ganz am Ende und ist zweifach spezifisch, damit sie
+ * sowohl die Rang-Kontur (`.tl-important`) als auch deren Hover-Regel schlägt.
+ */
+.tl-milestone.tl-milestone--active {
+  box-shadow:
+    inset 0 0 0 1px var(--color-fox),
+    0 0 0 3px color-mix(in srgb, var(--color-fox) 20%, transparent),
+    var(--shadow-card-lg);
 }
 
 /* ========================================================================== */

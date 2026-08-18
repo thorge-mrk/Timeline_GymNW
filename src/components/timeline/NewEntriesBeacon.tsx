@@ -64,20 +64,15 @@ export default function NewEntriesBeacon({
         onClick={() => {
           if (target) onJump(target);
         }}
-        className="tl-beacon flex cursor-pointer items-center justify-center gap-px border border-navy-line bg-navy font-bold text-paper tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+        className="tl-beacon flex cursor-pointer items-center justify-center border border-navy-line bg-navy font-bold text-paper tabular-nums focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
       >
-        <span aria-hidden="true" className="text-[13px] leading-none">
-          +
-        </span>
         <span
           aria-hidden="true"
-          className={
-            countLabel.length > 1
-              ? "text-[13px] leading-none"
-              : "text-[15px] leading-none"
-          }
+          className={`leading-none ${
+            countLabel.length > 1 ? "text-[14px]" : "text-[16px]"
+          }`}
         >
-          {countLabel}
+          +{countLabel}
         </span>
       </button>
     </div>

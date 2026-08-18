@@ -31,9 +31,9 @@ interface CardShellProps {
   axisY: number;
   width: number;
   cardHeight: number;
-  /** Klasse für Rang-spezifische Feinheiten (Ring, Punktgröße). */
+  /** Klasse für Rang-spezifische Feinheiten (Kontur der Karte). */
   rankClass: string;
-  /** Deckkraft des Fuchs-Punkts auf der Achse. */
+  /** Durchmesser des Fuchs-Punkts auf der Achse — je Rang unterschiedlich. */
   dotSize: number;
   highlighted: boolean;
   enterDelay: number | null;
@@ -436,7 +436,11 @@ function ImportantCard({
           imageUrl ? "pt-1.5 pb-2" : "h-full py-2"
         }`}
       >
-        <p className="line-clamp-2 text-[12.5px] leading-snug font-semibold text-coal">
+        <p
+          className={`text-[12.5px] leading-snug font-semibold text-coal ${
+            layout.titleLines === 2 ? "line-clamp-2" : "line-clamp-1"
+          }`}
+        >
           {entry.title}
         </p>
         <p className="mt-1 flex items-center gap-1.5 text-[10px] text-coal-faint">

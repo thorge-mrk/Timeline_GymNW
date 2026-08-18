@@ -204,12 +204,15 @@ export default function Timeline({
   const panContextRef = useRef(panContext);
   panContextRef.current = panContext;
 
-  /** Erlaubte Verschiebung `x` bei Zoomfaktor `targetK` (Bildschirm-Pixel). */
+  /**
+   * Erlaubte Verschiebung `x` bei Zoomfaktor `targetK`, in Bildschirm-Pixeln.
+   * Sichtbar ist der Welt-Bereich [(links − x)/k, (rechts − x)/k]; er muss
+   * innerhalb von `panLimits` liegen. Daraus fallen die beiden Schranken.
+   */
   const translateRange = useCallback(
-    (targetK: number, viewport: number) => {
+    (targetK: number, left: number, right: number) => {
       const { min, max } = panLimits(panContextRef.current, targetK);
-      // Sichtfenster [(0−x)/k, (viewport−x)/k] muss in [min, max] liegen.
-      return { lower: viewport - max * targetK, upper: -min * targetK };
+      return { lower: right - max * targetK, upper: left - min * targetK };
     },
     []
   );
@@ -337,9 +340,12 @@ export default function Timeline({
        * Die y-Achse wird dabei immer auf 0 gezogen — vertikal wird nie bewegt.
        */
       .constrain((current: ZoomTransform, extent) => {
-        const viewport = extent[1][0] - extent[0][0];
-        if (viewport <= 0) return current;
-        const { lower, upper } = translateRange(current.k, viewport);
+        if (extent[1][0] - extent[0][0] <= 0) return current;
+        const { lower, upper } = translateRange(
+          current.k,
+          extent[0][0],
+          extent[1][0]
+        );
         const wanted =
           lower > upper
             ? (lower + upper) / 2
@@ -475,7 +481,7 @@ export default function Timeline({
    */
   const translationFor = useCallback(
     (center: number, targetK: number) => {
-      const { lower, upper } = translateRange(targetK, width);
+      const { lower, upper } = translateRange(targetK, 0, width);
       const wanted = width / 2 - targetK * baseScale(center);
       return lower > upper
         ? (lower + upper) / 2

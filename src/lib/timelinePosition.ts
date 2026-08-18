@@ -41,20 +41,24 @@
  *
  * Vertikaler Aufbau (beide Seiten der Achse gleich aufgebaut)
  * ----------------------------------------------------------
- *     ┌ Meilenstein-Karten (0–2 Spuren)
- *     ├ Wichtig-Karten (0–1 Spur)
+ *     ┌ Kartenband (0–2 Spuren) — Meilenstein- UND Wichtig-Karten
  *     ├ „+N"-Cluster-Spur
- *     ├ Marker-Spuren (1–5)
+ *     ├ Pillen-Spuren (1–5)
  *     ══ Achse ══
- *     ├ Marker-Spuren (1–5)
+ *     ├ Pillen-Spuren (1–5)
  *     ├ „+N"-Cluster-Spur
- *     ├ Wichtig-Karten (0–1 Spur)
- *     └ Meilenstein-Karten (0–2 Spuren)
+ *     └ Kartenband (0–2 Spuren)
  *
- * Die kleinen Marker liegen also achsnah (kurzer Stiel = genaue Zeitangabe),
- * die großen Karten außen. Jedes platzierte Element kennt seinen `offset` —
- * den Abstand von der Achse bis zu seiner achsnahen Kante. Damit kommen die
- * Komponenten ohne eigene Geometrie aus.
+ * Beide Kartenarten teilen sich EIN Band. Das ist kein Sparzwang, sondern die
+ * bessere Lesart: Sie stehen auf derselben Höhe nebeneinander, die mittlere
+ * Karte ist sichtbar kleiner — und es kostet keinen einzigen Pixel zusätzliche
+ * Höhe, was den Pillen-Spuren zugutekommt. Innerhalb des Bandes greifen die
+ * Meilensteine zuerst zu (siehe {@link planTimeline}).
+ *
+ * Die kleinen Pillen liegen achsnah (kurzer Stiel = genaue Zeitangabe), die
+ * Karten außen. Jedes platzierte Element kennt seinen `offset` — den Abstand
+ * von der Achse bis zu seiner achsnahen Kante. Damit kommen die Komponenten
+ * ohne eigene Geometrie aus.
  */
 
 import { entryYearFraction, monthName } from "./dates";
@@ -205,20 +209,34 @@ export interface MilestoneLayout {
   height: number;
   /** Bildhöhe innerhalb der Karte (0 = ohne Bildfläche). */
   imageHeight: number;
-  /** Spuren JE SEITE (0 = auf diesem Schirm passt keine große Karte). */
-  lanes: number;
 }
 
 export interface ImportantLayout {
   variant: ImportantVariant;
   width: number;
-  /** Höhe der Karte MIT Bild — sie bestimmt die Spurhöhe. */
+  /** Höhe der Karte MIT Bild. */
   height: number;
   imageHeight: number;
   /** Höhe der bildlosen Variante (nur Titel + Datum). */
   textHeight: number;
-  /** Spuren JE SEITE (0 = wichtige Einträge laufen als Pille mit Ring mit). */
+  /** Zeilen, die der Titel bekommt — die Höhen unten sind darauf gerechnet. */
+  titleLines: 1 | 2;
+}
+
+/** Das gemeinsame Band der beiden Kartenarten. */
+export interface CardBand {
+  /** Karten-Spuren JE SEITE (0 = auf diesem Schirm passt keine Karte). */
   lanes: number;
+  /** Höhe einer Karten-Spur = Höhe der größten vorkommenden Karte. */
+  height: number;
+  milestone: MilestoneLayout;
+  important: ImportantLayout;
+  /**
+   * Dürfen wichtige Einträge hier eine Karte bekommen? Falsch, sobald selbst
+   * die Meilensteine nur noch als Pillenband dargestellt werden können — dann
+   * bliebe für eine Stufe darunter ohnehin nichts übrig.
+   */
+  importantCards: boolean;
 }
 
 /** Abstände einer Seite, gemessen von der Achse bis zur achsnahen Kante. */
@@ -226,15 +244,13 @@ export interface SideBands {
   entryLanes: number;
   markerOffset: number;
   clusterOffset: number;
-  importantOffset: number;
-  milestoneOffset: number;
+  cardOffset: number;
 }
 
 export interface TimelineBands {
   above: SideBands;
   below: SideBands;
-  milestone: MilestoneLayout;
-  important: ImportantLayout;
+  card: CardBand;
 }
 
 const MILESTONE_SIZES: Record<
@@ -246,12 +262,23 @@ const MILESTONE_SIZES: Record<
   pill: { width: 192, height: 40, imageHeight: 0 },
 };
 
+/*
+ * Die Höhen sind ausgerechnet, nicht geschätzt: Innenabstand + Titelzeilen
+ * (12,5 px / leading-snug ≈ 17,2 px) + Zwischenraum + Meta-Zeile (≈ 15 px) +
+ * Innenabstand. Deshalb passt der Text in jeder Variante ohne Abschneiden.
+ */
 const IMPORTANT_SIZES: Record<
   ImportantVariant,
-  { width: number; height: number; imageHeight: number; textHeight: number }
+  {
+    width: number;
+    height: number;
+    imageHeight: number;
+    textHeight: number;
+    titleLines: 1 | 2;
+  }
 > = {
-  card: { width: 196, height: 114, imageHeight: 62, textHeight: 52 },
-  slim: { width: 172, height: 92, imageHeight: 46, textHeight: 44 },
+  card: { width: 196, height: 126, imageHeight: 58, textHeight: 70, titleLines: 2 },
+  slim: { width: 172, height: 94, imageHeight: 44, textHeight: 54, titleLines: 1 },
 };
 
 /**
@@ -273,9 +300,6 @@ export const MAX_CARD_WIDTH = MILESTONE_SIZES.full.width;
 /** Mehr als so viele Pillen-Spuren je Seite werden nie gestapelt. */
 export const MAX_MARKER_LANES = 5;
 
-/** Ab so vielen Pillen-Spuren lohnt sich eine zweite Meilenstein-Spur. */
-const SOFT_MARKER_LANES = 3;
-
 /* ========================================================================== */
 /*  Rand des Zeichenbereichs                                                  */
 /* ========================================================================== */
@@ -292,7 +316,7 @@ export const EDGE_FADE = 14;
  * dürfen. Auf einem schmalen Telefon ist ein voller Kartenrand schlicht nicht
  * bezahlbar; dort wird proportional gekürzt.
  */
-const EDGE_PADDING_MAX_SHARE = 0.32;
+const EDGE_PADDING_MAX_SHARE = 0.36;
 
 /**
  * Luft links und rechts des Zeichenbereichs, damit die äußersten Elemente
@@ -405,21 +429,32 @@ export interface BandNeeds {
   important: boolean;
 }
 
+/** Pillen-Spuren, die vor dem Kartenband gesichert werden. */
+const PRE_CARD_LANES = 3;
+
 /**
- * Verteilt die verfügbare Höhe auf die Bänder — von innen nach außen und in
- * der Reihenfolge, in der zusätzliche Höhe den größten Gewinn bringt:
+ * Verteilt die verfügbare Höhe — in der Reihenfolge, in der jeder weitere
+ * Pixel den größten Gewinn bringt:
  *
- *   0. Pflicht:  eine Pillen-Spur + die Spur für die „+N"-Badges
- *   1. Meilenstein-Band, größte Variante, die passt (full → compact → pill)
- *   2. Wichtig-Band (an die Meilenstein-Variante gekoppelt)
- *   3. zweite und dritte Pillen-Spur — der billigste Weg zu mehr Einträgen
- *   4. zweite Meilenstein-Spur
- *   5. vierte und fünfte Pillen-Spur
+ *   0. Pflicht:  eine Pillen-Spur + die Spur für die „+N"-Badges       68 px
+ *   1. zweite und dritte Pillen-Spur                                   +34 je
+ *   2. Kartenband, größte Variante, die passt (full → compact → pill)  +188/144/50
+ *   3. zweite Karten-Spur                                              +Kartenhöhe +12
+ *   4. vierte und fünfte Pillen-Spur                                   +34 je
  *
- * Die KARTENGRÖSSEN (Schritte 1, 2, 4) richten sich nach der knapperen Seite,
- * damit das Bild symmetrisch bleibt. Die PILLEN-SPUREN (Schritte 3 und 5)
- * werden je Seite gezählt: Unterhalb der Achse geht zuerst die Beschriftung ab,
- * oberhalb ist dadurch oft eine Spur mehr drin — und die wird auch genommen.
+ * Warum die ersten drei Pillen-Spuren VOR dem Kartenband kommen: Eine große
+ * Karte kostet so viel Höhe wie fünf Pillen-Spuren. Bekäme sie den Vortritt,
+ * stünde auf einem mittelhohen Schirm eine schöne Karte über einem Feld aus
+ * „+N"-Badges — und genau die sollen verschwinden. Umgekehrt gilt aber auch:
+ * Ein Zeitstrahl ganz ohne Bildkarten verliert sein Gesicht. Deshalb wird die
+ * Rechnung zweimal geführt (drei bzw. zwei gesicherte Spuren) und die Variante
+ * mit den ECHTEN Karten genommen, falls die großzügigere Reservierung nur noch
+ * ein Pillenband übrig ließe.
+ *
+ * Die KARTENGRÖSSE richtet sich nach der knapperen Seite, damit das Bild
+ * symmetrisch bleibt. Die PILLEN-SPUREN werden zusätzlich je Seite gezählt:
+ * Unterhalb der Achse geht zuerst die Beschriftung ab, oberhalb ist dadurch
+ * oft eine Spur mehr drin — und die wird auch genommen.
  *
  * Bänder, für die es gar keine Einträge gibt, werden übersprungen; ihre Höhe
  * kommt den Pillen-Spuren zugute.
@@ -433,100 +468,123 @@ export function chooseBands(
   const usableBelow = Math.max(belowHeight - AXIS_LABEL_BAND, 0);
   const shared = Math.min(usableAbove, usableBelow);
 
-  /** Bereits fest verplante Höhe (Pflichtspuren + Bänder). */
-  let spent = 2 * ENTRY_LANE_HEIGHT; // 1 Pillen-Spur + 1 Cluster-Spur
+  const build = (preLanes: number): TimelineBands => {
+    /** Fest verplante Höhe; alles darüber wird je Seite in Pillen umgesetzt. */
+    let spent = 2 * ENTRY_LANE_HEIGHT; // 1 Pillen-Spur + 1 Cluster-Spur
+    /** Pillen-Spuren, die BEIDE Seiten sicher bekommen. */
+    let guaranteed = 1;
 
-  // ---- 1. Meilenstein-Band ------------------------------------------------
-  let milestoneVariant: MilestoneVariant = "pill";
-  let milestoneLanes = 0;
-  if (needs.milestones) {
-    for (const candidate of ["full", "compact", "pill"] as const) {
-      const cost = MILESTONE_BAND_GAP + MILESTONE_SIZES[candidate].height;
-      if (spent + cost <= shared) {
-        milestoneVariant = candidate;
-        milestoneLanes = 1;
-        spent += cost;
-        break;
+    const takeLane = (): void => {
+      if (guaranteed >= MAX_MARKER_LANES) return;
+      if (spent + ENTRY_LANE_HEIGHT > shared) return;
+      guaranteed += 1;
+      spent += ENTRY_LANE_HEIGHT;
+    };
+
+    // ---- 1. Pillen-Spuren bis `preLanes` ---------------------------------
+    while (guaranteed < preLanes) {
+      const before = guaranteed;
+      takeLane();
+      if (guaranteed === before) break; // passt nicht mehr
+    }
+
+    // ---- 2. Kartenband ----------------------------------------------------
+    let milestoneVariant: MilestoneVariant = "pill";
+    let importantVariant: ImportantVariant = "slim";
+    let importantCards = false;
+    let cardLanes = 0;
+    let cardHeight = 0;
+
+    if (needs.milestones) {
+      for (const candidate of ["full", "compact", "pill"] as const) {
+        const height = MILESTONE_SIZES[candidate].height;
+        if (spent + MILESTONE_BAND_GAP + height <= shared) {
+          milestoneVariant = candidate;
+          cardLanes = 1;
+          cardHeight = height;
+          spent += MILESTONE_BAND_GAP + height;
+          const coupled = IMPORTANT_FOR_MILESTONE[candidate];
+          if (coupled && needs.important) {
+            importantVariant = coupled;
+            importantCards = true;
+          }
+          break;
+        }
+      }
+    } else if (needs.important) {
+      // Ohne Meilensteine im Bestand tragen die wichtigen Einträge das Band
+      // allein — und dürfen dann auch die volle Kartengröße haben.
+      for (const candidate of ["card", "slim"] as const) {
+        const height = IMPORTANT_SIZES[candidate].height;
+        if (spent + MILESTONE_BAND_GAP + height <= shared) {
+          importantVariant = candidate;
+          importantCards = true;
+          cardLanes = 1;
+          cardHeight = height;
+          spent += MILESTONE_BAND_GAP + height;
+          break;
+        }
       }
     }
-  }
 
-  // ---- 2. Wichtig-Band ----------------------------------------------------
-  let importantVariant: ImportantVariant = "slim";
-  let importantLanes = 0;
-  if (needs.important) {
-    // Ohne Meilensteine im Bestand darf die Wichtig-Karte die volle Größe haben.
-    const cap =
-      milestoneLanes === 0
-        ? "card"
-        : IMPORTANT_FOR_MILESTONE[milestoneVariant];
-    const candidates: ImportantVariant[] =
-      cap === "card" ? ["card", "slim"] : cap === "slim" ? ["slim"] : [];
-    for (const candidate of candidates) {
-      const cost = MILESTONE_BAND_GAP + IMPORTANT_SIZES[candidate].height;
-      if (spent + cost <= shared) {
-        importantVariant = candidate;
-        importantLanes = 1;
-        spent += cost;
-        break;
-      }
+    // ---- 3. zweite Karten-Spur -------------------------------------------
+    if (cardLanes === 1 && spent + cardHeight + MILESTONE_LANE_GAP <= shared) {
+      cardLanes = 2;
+      spent += cardHeight + MILESTONE_LANE_GAP;
     }
-  }
 
-  // ---- 3./4. Pillen-Spuren bis SOFT_MARKER_LANES, dann 2. Meilenstein-Spur -
-  const reservedForMarkers = (SOFT_MARKER_LANES - 1) * ENTRY_LANE_HEIGHT;
-  if (milestoneLanes === 1) {
-    const secondLane =
-      MILESTONE_SIZES[milestoneVariant].height + MILESTONE_LANE_GAP;
-    if (spent + reservedForMarkers + secondLane <= shared) {
-      milestoneLanes = 2;
-      spent += secondLane;
-    }
-  }
+    // ---- 4. restliche Pillen-Spuren ---------------------------------------
+    takeLane();
+    takeLane();
 
-  // ---- 5. Alle übrige Höhe in Pillen-Spuren, je Seite gezählt --------------
-  const lanesFor = (usable: number): number =>
-    1 +
-    Math.min(
-      MAX_MARKER_LANES - 1,
-      Math.max(0, Math.floor((usable - spent) / ENTRY_LANE_HEIGHT))
-    );
+    const card: CardBand = {
+      lanes: cardLanes,
+      height: cardHeight,
+      milestone: {
+        ...MILESTONE_SIZES[milestoneVariant],
+        variant: milestoneVariant,
+      },
+      important: {
+        ...IMPORTANT_SIZES[importantVariant],
+        variant: importantVariant,
+      },
+      importantCards: importantCards && cardLanes > 0,
+    };
 
-  const milestone: MilestoneLayout = {
-    ...MILESTONE_SIZES[milestoneVariant],
-    variant: milestoneVariant,
-    lanes: milestoneLanes,
-  };
-  const important: ImportantLayout = {
-    ...IMPORTANT_SIZES[importantVariant],
-    variant: importantVariant,
-    lanes: importantLanes,
-  };
+    /** Was auf DIESER Seite über das Gesicherte hinaus noch hineinpasst. */
+    const lanesFor = (usable: number): number =>
+      Math.min(
+        MAX_MARKER_LANES,
+        guaranteed +
+          Math.max(0, Math.floor((usable - spent) / ENTRY_LANE_HEIGHT))
+      );
 
-  const band = (offset: number, lanes: number): SideBands => {
-    const clusterOffset = offset + lanes * ENTRY_LANE_HEIGHT;
-    const importantOffset =
-      clusterOffset + ENTRY_LANE_HEIGHT + MILESTONE_BAND_GAP;
-    const milestoneOffset =
-      importantLanes > 0
-        ? importantOffset +
-          importantLanes * (important.height + MILESTONE_LANE_GAP)
-        : importantOffset;
+    const band = (offset: number, lanes: number): SideBands => {
+      const clusterOffset = offset + lanes * ENTRY_LANE_HEIGHT;
+      return {
+        entryLanes: lanes,
+        markerOffset: offset,
+        clusterOffset,
+        cardOffset: clusterOffset + ENTRY_LANE_HEIGHT + MILESTONE_BAND_GAP,
+      };
+    };
+
     return {
-      entryLanes: lanes,
-      markerOffset: offset,
-      clusterOffset,
-      importantOffset,
-      milestoneOffset,
+      above: band(AXIS_MARKER_GAP, lanesFor(usableAbove)),
+      below: band(AXIS_LABEL_BAND, lanesFor(usableBelow)),
+      card,
     };
   };
 
-  return {
-    above: band(AXIS_MARKER_GAP, lanesFor(usableAbove)),
-    below: band(AXIS_LABEL_BAND, lanesFor(usableBelow)),
-    milestone,
-    important,
-  };
+  /** Echte Bildkarte — ein Meilenstein-Pillenband zählt nicht als solche. */
+  const hasRealCard = (bands: TimelineBands): boolean =>
+    bands.card.lanes > 0 && bands.card.milestone.variant !== "pill";
+
+  const spacious = build(PRE_CARD_LANES);
+  if (hasRealCard(spacious) || !needs.milestones) return spacious;
+
+  const withCards = build(PRE_CARD_LANES - 1);
+  return hasRealCard(withCards) ? withCards : spacious;
 }
 
 /* ========================================================================== */
@@ -584,13 +642,18 @@ function edgeReserve(width: number, anchor: number): number {
   return Math.ceil((2 * width - anchor) * ZOOM_DRIFT);
 }
 
-interface SidePackConfig {
+/** Eine Rang-Stufe der Belegung: gleiche Art Element, gleiche Breitenleiter. */
+export interface PackTier<T> {
+  items: ReadonlyArray<Anchored<T>>;
   /** Breiten-Kandidaten, breiteste zuerst (mindestens eine). */
   widths: readonly number[];
-  /** Abstand linke Kante → Ankerpunkt; `"center"` = mittig über dem Datum. */
-  anchor: number | "center";
   /** Mindestabstand zum nächsten Element derselben Spur. */
   gap: number;
+}
+
+interface SidePackConfig {
+  /** Abstand linke Kante -> Ankerpunkt; `"center"` = mittig über dem Datum. */
+  anchor: number | "center";
   /** Spuren je Seite — oben und unten dürfen sich unterscheiden. */
   lanes: Record<Side, number>;
   /** Seite, die bei Gleichstand gewinnt. */
@@ -607,7 +670,7 @@ function clampLeft(left: number, width: number, contentWidth: number): number {
 
 /**
  * Belegte Bereiche einer Spur, nach `start` sortiert. Ein Intervall statt nur
- * „rechte Kante": Spätere Ränge dürfen in LÜCKEN rutschen, die frühere Ränge
+ * "rechte Kante": Spätere Ränge dürfen in LÜCKEN rutschen, die frühere Ränge
  * gelassen haben — sonst könnte ein bevorzugter Eintrag eine ganze Spur
  * blockieren, obwohl links davon noch alles frei ist.
  */
@@ -642,19 +705,19 @@ function laneOccupy(lane: LaneOccupancy, start: number, end: number): void {
  * Greedy-Belegung über BEIDE Seiten der Achse, in Rang-Stufen.
  *
  * `tiers` enthält die Elemente nach Priorität — die erste Stufe darf sich die
- * Spuren zuerst nehmen. Innerhalb einer Stufe wird von links nach rechts
- * gegangen. Für jedes Element wird die BREITESTE Variante gesucht, die
- * überhaupt noch irgendwo passt; erst wenn keine passt, kommt es in den
- * Overflow (und damit später in ein „+N"-Cluster).
+ * Spuren zuerst nehmen, spätere Stufen füllen die Lücken. Innerhalb einer Stufe
+ * wird von links nach rechts gegangen. Für jedes Element wird die BREITESTE
+ * Variante gesucht, die überhaupt noch irgendwo passt; erst wenn keine passt,
+ * kommt es in den Overflow (und damit später in ein Cluster-Badge).
  *
  * Gewonnen hat
- *   1. die kleinere Spurnummer  → achsnah wird zuerst gefüllt,
- *   2. bei Gleichstand die Seite mit weniger Elementen → das Bild bleibt
+ *   1. die kleinere Spurnummer  -> achsnah wird zuerst gefüllt,
+ *   2. bei Gleichstand die Seite mit weniger Elementen -> das Bild bleibt
  *      ausgewogen, statt eine Seite vollzustopfen,
- *   3. bei Gleichstand `cfg.prefer` → deterministisch.
+ *   3. bei Gleichstand `cfg.prefer` -> deterministisch.
  */
 export function packSides<T>(
-  tiers: ReadonlyArray<ReadonlyArray<Anchored<T>>>,
+  tiers: ReadonlyArray<PackTier<T>>,
   cfg: SidePackConfig
 ): { placed: SideAssignment<T>[]; overflow: Anchored<T>[] } {
   const placed: SideAssignment<T>[] = [];
@@ -669,17 +732,17 @@ export function packSides<T>(
     cfg.prefer === "above" ? ["above", "below"] : ["below", "above"];
 
   for (const tier of tiers) {
-    for (const entry of tier) {
+    for (const entry of tier.items) {
       let assigned = false;
 
-      for (const width of cfg.widths) {
+      for (const width of tier.widths) {
         const anchor = cfg.anchor === "center" ? width / 2 : cfg.anchor;
         const max = Math.max(0, cfg.contentWidth - width);
         const reserve = edgeReserve(width, anchor);
         const lo = Math.min(reserve, max);
         const hi = Math.max(lo, max - reserve);
         const left = Math.min(Math.max(entry.lx - anchor, lo), hi);
-        const end = left + width + cfg.gap;
+        const end = left + width + tier.gap;
 
         let bestSide: Side | null = null;
         let bestLane = Number.POSITIVE_INFINITY;
@@ -832,20 +895,22 @@ export function entryRank(entry: Entry): "milestone" | "important" | "normal" {
  * sonst würden Spurzuordnung und Cluster beim Pannen springen.
  *
  * Ablauf:
- *   1. Meilensteine bekommen die großen Karten, verteilt auf beide Seiten
- *      (Startseite: unten — so bleibt die gewohnte Lesart erhalten).
- *   2. Wichtige Einträge bekommen die mittleren Karten (Startseite: oben, damit
- *      sich die beiden Kartenarten nicht auf einer Seite stapeln).
- *   3. Was dort keinen Platz fand, wird zur Pille — und zwar VOR den normalen
- *      Einträgen: Erst kommen verdrängte Meilensteine, dann verdrängte wichtige
- *      Einträge, zuletzt die normalen. Wird der Platz knapp, verliert deshalb
- *      immer zuerst ein normaler Eintrag seine Pille.
- *   4. Der Rest wird zu „+N"-Badges in der jeweiligen Cluster-Spur.
+ *   1. KARTENBAND. Beide Kartenarten teilen sich die Spuren, aber nicht
+ *      gleichberechtigt: Meilensteine greifen als erste Stufe zu, wichtige
+ *      Einträge füllen anschließend die Lücken.
+ *   2. PILLEN-SPUREN. Was im Kartenband keinen Platz fand, wird zur Pille — und
+ *      zwar VOR den normalen Einträgen: erst verdrängte Meilensteine, dann
+ *      verdrängte wichtige Einträge, zuletzt die normalen.
+ *   3. Was auch dort nicht mehr passt, wird zu einem „+N"-Badge.
  *
- * Zur Cluster-Spur: Sie ist nur dann nötig, wenn es überhaupt Overflow gibt.
- * Deshalb wird zuerst großzügig gepackt (Pillen dürfen die Cluster-Spur
- * mitbenutzen) — und nur wenn dabei etwas übrig bleibt, ein zweites Mal mit
- * freigehaltener Cluster-Spur.
+ * Daraus ergibt sich die geforderte Rangfolge des Herunterstufens von selbst:
+ * Wird der Platz knapp, verliert IMMER zuerst ein normaler Eintrag seine Pille,
+ * dann ein wichtiger, und ein Meilenstein zuallerletzt.
+ *
+ * Zur Cluster-Spur: Sie ist nur nötig, wenn es überhaupt Overflow gibt. Deshalb
+ * wird zuerst großzügig gepackt (Pillen dürfen die Cluster-Spur mitbenutzen) —
+ * und nur wenn dabei etwas übrig bleibt, ein zweites Mal mit freigehaltener
+ * Cluster-Spur.
  */
 export function planTimeline(
   entries: ReadonlyArray<Entry>,
@@ -870,30 +935,46 @@ export function planTimeline(
     milestones: milestoneItems.length > 0,
     important: importantItems.length > 0,
   });
+  const { card } = bands;
 
-  const milestonePack = packSides([milestoneItems], {
-    widths: [bands.milestone.width],
-    anchor: "center",
-    gap: MILESTONE_GAP,
-    lanes: { above: bands.milestone.lanes, below: bands.milestone.lanes },
-    prefer: "below",
-    contentWidth: opts.layoutContentWidth,
-  });
+  /* ---- 1. Kartenband: Meilensteine zuerst, wichtige Einträge danach ----- */
+  const cardPack = packSides(
+    [
+      {
+        items: milestoneItems,
+        widths: [card.milestone.width],
+        gap: MILESTONE_GAP,
+      },
+      {
+        items: card.importantCards ? importantItems : [],
+        widths: [card.important.width],
+        gap: IMPORTANT_GAP,
+      },
+    ],
+    {
+      anchor: "center",
+      lanes: { above: card.lanes, below: card.lanes },
+      prefer: "below",
+      contentWidth: opts.layoutContentWidth,
+    }
+  );
 
-  const importantPack = packSides([importantItems], {
-    widths: [bands.important.width],
-    anchor: "center",
-    gap: IMPORTANT_GAP,
-    lanes: { above: bands.important.lanes, below: bands.important.lanes },
-    prefer: "above",
-    contentWidth: opts.layoutContentWidth,
-  });
+  const isMilestone = (a: Anchored<Entry>) => a.item.is_milestone;
+  const milestoneCards = cardPack.placed.filter(isMilestone);
+  const importantCards = cardPack.placed.filter((a) => !isMilestone(a));
+  const milestoneRest = cardPack.overflow.filter(isMilestone);
+  const importantRest = card.importantCards
+    ? cardPack.overflow.filter((a) => !isMilestone(a))
+    : importantItems;
 
-  const tiers = [milestonePack.overflow, importantPack.overflow, normalItems];
+  /* ---- 2. Pillen-Spuren, nach Rang gestaffelt --------------------------- */
+  const tiers: PackTier<Entry>[] = [
+    { items: milestoneRest, widths: MARKER_WIDTHS, gap: ENTRY_GAP },
+    { items: importantRest, widths: MARKER_WIDTHS, gap: ENTRY_GAP },
+    { items: normalItems, widths: MARKER_WIDTHS, gap: ENTRY_GAP },
+  ];
   const markerConfig = (bonusLanes: number) => ({
-    widths: MARKER_WIDTHS,
     anchor: ENTRY_ANCHOR,
-    gap: ENTRY_GAP,
     lanes: {
       above: bands.above.entryLanes + bonusLanes,
       below: bands.below.entryLanes + bonusLanes,
@@ -911,8 +992,8 @@ export function planTimeline(
 
   return {
     markers: markerPack.placed,
-    important: importantPack.placed,
-    milestones: milestonePack.placed,
+    important: importantCards,
+    milestones: milestoneCards,
     clusters: planClusters(markerPack.overflow, "above"),
     bands,
     layoutScale: opts.layoutScale,
@@ -933,7 +1014,9 @@ export interface TimelineLayout {
   /** „+N"-Badges. */
   clusters: EntryCluster[];
   bands: TimelineBands;
+  /** Maße der großen Karte. */
   milestone: MilestoneLayout;
+  /** Maße der mittleren Karte. */
   importantLayout: ImportantLayout;
 }
 
@@ -945,7 +1028,7 @@ export interface PositionOptions {
   scale: number;
 }
 
-type BandKind = "marker" | "important" | "milestone";
+type BandKind = "marker" | "card";
 
 function offsetFor(
   bands: TimelineBands,
@@ -957,14 +1040,9 @@ function offsetFor(
   if (kind === "marker") {
     return band.markerOffset + lane * ENTRY_LANE_HEIGHT;
   }
-  if (kind === "important") {
-    return (
-      band.importantOffset + lane * (bands.important.height + MILESTONE_LANE_GAP)
-    );
-  }
-  return (
-    band.milestoneOffset + lane * (bands.milestone.height + MILESTONE_LANE_GAP)
-  );
+  // Beide Kartenarten teilen sich das Band; die Spurhöhe richtet sich nach der
+  // größeren von beiden, die kleinere lässt nach außen einfach mehr Luft.
+  return band.cardOffset + lane * (bands.card.height + MILESTONE_LANE_GAP);
 }
 
 function positionAll(
@@ -1034,12 +1112,12 @@ export function positionTimeline(
 
   return {
     markers: positionAll(plan.markers, "marker", ENTRY_ANCHOR, opts, bands),
-    important: positionAll(plan.important, "important", "center", opts, bands),
-    milestones: positionAll(plan.milestones, "milestone", "center", opts, bands),
+    important: positionAll(plan.important, "card", "center", opts, bands),
+    milestones: positionAll(plan.milestones, "card", "center", opts, bands),
     clusters,
     bands,
-    milestone: bands.milestone,
-    importantLayout: bands.important,
+    milestone: bands.card.milestone,
+    importantLayout: bands.card.important,
   };
 }
 

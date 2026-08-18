@@ -197,6 +197,12 @@ export default function Home() {
     onInserted: handleInserted,
   });
 
+  // Wird die Übertragung abgeschaltet, verschwindet auch die Warteschlange:
+  // Ein Zähler, der nicht mehr weiterzählt, wäre nur noch ein Rätsel.
+  useEffect(() => {
+    if (!settings.realtime) setPending([]);
+  }, [settings.realtime]);
+
   const noteInteraction = useCallback(() => {
     lastInteractionRef.current = Date.now();
   }, []);
