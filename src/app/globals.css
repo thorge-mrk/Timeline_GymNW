@@ -6,10 +6,10 @@
  * Dazu warmes Papier statt Weiß und Coal statt Schwarz.
  */
 @theme {
-  --color-paper: #f7f4ed;
-  --color-paper-card: #fffdf9;
-  --color-paper-sunk: #f1ece1;
-  --color-paper-line: #e6e0d3;
+  --color-paper: #faf8f3;
+  --color-paper-card: #fffefc;
+  --color-paper-sunk: #f3efe7;
+  --color-paper-line: #e9e4d9;
   --color-coal: #27272a;
   --color-coal-soft: #57565c;
   --color-coal-faint: #8b8a88;

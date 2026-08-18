@@ -146,42 +146,48 @@ Es kann mehrere Konten jeder Rolle geben. Anonyme Besucher dürfen ausschließli
 
 ### Konto anlegen
 
-Supabase-Dashboard → **SQL Editor**. Die Rolle muss **bewusst** angegeben werden, damit
-niemand versehentlich zu viele Rechte bekommt:
+Supabase-Dashboard → **SQL Editor**. Du gibst nur den **Namen** und die **Rolle** an —
+die Anmelde-Adresse setzt der Server automatisch zusammen:
 
 ```sql
-select * from private.create_account('schulleitung@gym-nw.de', 'admin');
-select * from private.create_account('ipad1@gym-nw.de',        'editor');
-select * from private.create_account('ipad2@gym-nw.de',        'editor');
-select * from private.create_account('ipad3@gym-nw.de',        'editor');
+select * from private.create_account('Anna Meyer', 'admin');
+select * from private.create_account('iPad 1',     'editor');
+select * from private.create_account('iPad 2',     'editor');
+select * from private.create_account('iPad 3',     'editor');
 ```
 
-Das Ergebnis zeigt das automatisch erzeugte Passwort **ein einziges Mal**:
+Das Ergebnis zeigt Adresse, Rolle und Passwort **ein einziges Mal**:
 
 | konto | rolle | passwort | hinweis |
 | --- | --- | --- | --- |
-| ipad1@gym-nw.de | editor | `YGz87AKn6QRos2ecaLCb` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
+| anna.meyer@zeitstrahl-gymnw.de | admin | `Musikraum+Pausenhof46` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
 
-Das Passwort ist 20 Zeichen lang, zufällig erzeugt und enthält keine verwechselbaren
-Zeichen (kein `0`/`O`, kein `1`/`l`/`I`) — es lässt sich also sicher abtippen oder
-vorlesen. Danach ist es nur noch verschlüsselt gespeichert und **kann nicht mehr
-ausgelesen werden**, auch nicht von der Schulverwaltung. Bitte sofort in den
+Aus „Anna Meyer" wird `anna.meyer@zeitstrahl-gymnw.de`, aus „iPad 1" wird
+`ipad.1@zeitstrahl-gymnw.de`. Umlaute werden ausgeschrieben („Jürgen Groß" →
+`juergen.gross@…`). Mit dieser Adresse meldet man sich auf der Website an.
+
+Die Passwörter bestehen aus zwei gut lesbaren Wörtern, einem Sonderzeichen und
+Ziffern (`Zeugnis#Bibliothek813`) — man kann sie vorlesen und sich merken, und sie sind
+trotzdem stark. Danach sind sie nur noch verschlüsselt gespeichert und **können nicht
+mehr ausgelesen werden**, auch nicht von der Schulverwaltung. Bitte sofort in den
 Passwortmanager der Schule übernehmen.
 
 ### Konten verwalten
 
+Alles läuft über den Namen — die Adresse muss man sich nicht merken:
+
 ```sql
--- Übersicht: wer hat ein Konto, welche Rolle, wer war zuletzt angemeldet?
+-- Übersicht: Name, Adresse, Rolle, letzte Anmeldung
 select * from private.list_accounts();
 
 -- Neues Passwort erzeugen (wird wieder einmalig angezeigt)
-select * from private.reset_password('ipad1@gym-nw.de');
+select * from private.reset_password('iPad 1');
 
 -- Rolle wechseln
-select private.set_account_role('ipad1@gym-nw.de', 'admin');
+select private.set_account_role('iPad 1', 'admin');
 
 -- Konto löschen (die Einträge dieser Person bleiben erhalten)
-select private.delete_account('ipad3@gym-nw.de');
+select private.delete_account('iPad 3');
 ```
 
 > **Nach einer Rollen-Änderung** muss sich die betroffene Person **einmal ab- und wieder
@@ -200,10 +206,10 @@ select private.delete_account('ipad3@gym-nw.de');
    für die Betreuung und je ein `editor`-Konto pro iPad. Die angezeigten Passwörter sofort
    in den Passwortmanager der Schule übernehmen — sie lassen sich später nicht mehr
    auslesen.
-2. **Dev-Accounts entfernen.** Zuerst deren Einträge löschen (SQL aus Abschnitt 5), dann:
+2. **Test-Konten entfernen**, falls noch welche existieren — `select * from private.list_accounts();`
+   zeigt alle an, gelöscht wird per Name:
    ```sql
-   select private.delete_account('dev-admin@zeitstrahl-gymnw.de');
-   select private.delete_account('dev-editor@zeitstrahl-gymnw.de');
+   select private.delete_account('Pruef Admin');
    ```
 3. **Zusätzlich absichern (empfohlen):** Dashboard → **Authentication → Sign In / Providers**
    → Schalter **„Allow new users to sign up“ AUS**. Die Datenbanksperre aus Abschnitt 6
