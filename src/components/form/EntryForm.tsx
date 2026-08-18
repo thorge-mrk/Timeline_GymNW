@@ -45,6 +45,11 @@ const AUTHOR_MAX = 80;
 const DATE_INPUT_ID = "entry-date";
 const DEFAULT_CATEGORY: CategoryId = "schueler";
 
+/** „10/3" → „10-3": Klasse/Zweig einheitlich mit Bindestrich statt Schrägstrich. */
+function normalizeClassName(value: string) {
+  return value.replace(/(\d)\s*\/\s*(\d)/g, "$1-$2");
+}
+
 /** Fehler mit bereits deutscher, anzeigbarer Meldung. */
 class FriendlyError extends Error {}
 
@@ -452,7 +457,7 @@ export function EntryForm({
         title: cleanTitle,
         description: description.trim() || null,
         category,
-        class_name: showClassField ? className.trim() || null : null,
+        class_name: showClassField ? normalizeClassName(className.trim()) || null : null,
         author_name: authorName.trim() || null,
         year: smart.year,
         month: smart.month ?? null,
