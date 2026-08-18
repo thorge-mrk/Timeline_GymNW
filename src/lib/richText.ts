@@ -15,7 +15,8 @@
 export type InlineSpan =
   | { kind: "text"; text: string }
   | { kind: "bold"; text: string }
-  | { kind: "italic"; text: string };
+  | { kind: "italic"; text: string }
+  | { kind: "boldItalic"; text: string };
 
 export type RichBlock =
   | { type: "h2"; spans: InlineSpan[] }
@@ -26,8 +27,9 @@ export type RichBlock =
 /** Zerlegt eine Zeile in normale, fette und kursive Abschnitte. */
 export function parseInline(line: string): InlineSpan[] {
   const spans: InlineSpan[] = [];
-  // **fett** hat Vorrang vor *kursiv*
-  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  // Reihenfolge ist entscheidend: ***beides*** vor **fett** vor *kursiv*,
+  // sonst bleiben einzelne Sternchen als Zeichen im Text stehen.
+  const pattern = /(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*)/g;
   let last = 0;
   let match: RegExpExecArray | null;
 
@@ -36,7 +38,9 @@ export function parseInline(line: string): InlineSpan[] {
       spans.push({ kind: "text", text: line.slice(last, match.index) });
     }
     const token = match[0];
-    if (token.startsWith("**")) {
+    if (token.startsWith("***")) {
+      spans.push({ kind: "boldItalic", text: token.slice(3, -3) });
+    } else if (token.startsWith("**")) {
       spans.push({ kind: "bold", text: token.slice(2, -2) });
     } else {
       spans.push({ kind: "italic", text: token.slice(1, -1) });
@@ -112,6 +116,7 @@ export function richTextToPlain(raw: string | null | undefined): string {
       line
         .replace(/^\s*#{2,3}\s+/, "")
         .replace(/^\s*[-•*]\s+/, "• ")
+        .replace(/\*\*\*([^*]+)\*\*\*/g, "$1")
         .replace(/\*\*([^*]+)\*\*/g, "$1")
         .replace(/\*([^*]+)\*/g, "$1")
         .trim()
