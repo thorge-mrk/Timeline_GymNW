@@ -26,6 +26,12 @@ import {
   type ImageItem,
   type PreparedImage,
 } from "./imageItems";
+import {
+  RankChoice,
+  rankFlags,
+  rankOf,
+  type EntryRank,
+} from "./RankChoice";
 import { RichTextInput } from "./RichTextInput";
 import { SmartDateInput } from "./SmartDateInput";
 
@@ -113,19 +119,6 @@ function AlertIcon() {
       <circle cx="10" cy="10" r="7.6" />
       <path d="M10 6.1v4.6" />
       <path d="M10 13.6h.01" />
-    </svg>
-  );
-}
-
-function StarIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className="h-4 w-4 shrink-0 text-fox"
-    >
-      <path d="M12 3.6l2.42 4.9 5.41.79-3.92 3.82.93 5.39L12 15.95l-4.84 2.55.93-5.39L4.17 9.29l5.41-.79z" />
     </svg>
   );
 }
@@ -230,7 +223,7 @@ export function EntryForm({
   const [category, setCategory] = useState<CategoryId>(
     entry ? categoryById(entry.category).id : DEFAULT_CATEGORY
   );
-  const [isMilestone, setIsMilestone] = useState(entry?.is_milestone ?? false);
+  const [rank, setRank] = useState<EntryRank>(() => rankOf(entry));
   const [className, setClassName] = useState(entry?.class_name ?? "");
   const [authorName, setAuthorName] = useState(entry?.author_name ?? "");
   const [description, setDescription] = useState(entry?.description ?? "");
@@ -337,7 +330,7 @@ export function EntryForm({
     setClassName("");
     setAuthorName("");
     setDescription("");
-    setIsMilestone(false);
+    setRank("normal");
     setCover(null);
     setGallery([]);
     setAudio(null);
@@ -381,6 +374,15 @@ export function EntryForm({
     if (gallery.length > GALLERY_MAX) {
       failWith(
         `Es sind höchstens ${GALLERY_MAX} weitere Bilder erlaubt — bitte ein paar entfernen.`
+      );
+      return;
+    }
+
+    // Die Datenbank lässt nicht mehr zu — hier steht wenigstens ein Satz, mit
+    // dem man etwas anfangen kann.
+    if (description.length > DESCRIPTION_MAX) {
+      failWith(
+        `Die Beschreibung ist zu lang (höchstens ${DESCRIPTION_MAX} Zeichen) — bitte etwas kürzen.`
       );
       return;
     }
@@ -455,7 +457,7 @@ export function EntryForm({
         year: smart.year,
         month: smart.month ?? null,
         day: smart.day ?? null,
-        is_milestone: isAdmin ? isMilestone : false,
+        ...rankFlags(rank, isAdmin),
         image_path: imagePath,
         image_paths: imagePaths,
         audio_path: audioPath,
@@ -725,28 +727,15 @@ export function EntryForm({
           </p>
         </div>
 
-        {isAdmin && (
-          <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-paper-line bg-paper-sunk p-3.5">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-5 w-5 shrink-0 accent-fox"
-              checked={isMilestone}
-              disabled={busy}
-              onChange={(e) => setIsMilestone(e.target.checked)}
-            />
-            <span className="text-sm">
-              <span className="flex items-center gap-1.5 font-semibold text-coal">
-                <StarIcon />
-                Als Meilenstein hervorheben
-              </span>
-              <span className="hint mt-0.5 block">
-                Große Karte mit dem Titelbild auf dem Zeitstrahl.
-              </span>
-            </span>
-          </label>
-        )}
+        {/* 4 — Rangstufe: normal · wichtig · Meilenstein (nur Admin) */}
+        <RankChoice
+          value={rank}
+          onChange={setRank}
+          allowMilestone={isAdmin}
+          disabled={busy}
+        />
 
-        {/* 4 — Klasse (nur bei Schüler/Ehemalige) */}
+        {/* 5 — Klasse (nur bei Schüler/Ehemalige) */}
         {showClassField && (
           <div className="animate-fade-up">
             <label className="label" htmlFor="entry-class">
@@ -770,7 +759,7 @@ export function EntryForm({
       </Section>
 
       <Section title="Erzählung">
-        {/* 5 — Autor */}
+        {/* 6 — Autor */}
         <div>
           <label className="label" htmlFor="entry-author">
             Wer erinnert sich?
@@ -791,7 +780,7 @@ export function EntryForm({
           </p>
         </div>
 
-        {/* 6 — Beschreibung mit kleinem Textwerkzeug */}
+        {/* 7 — Beschreibung mit Formatier-Werkzeugen */}
         <RichTextInput
           id="entry-description"
           label="Beschreibung"
@@ -804,7 +793,7 @@ export function EntryForm({
       </Section>
 
       <Section title="Bilder">
-        {/* 7 — Titelbild */}
+        {/* 8 — Titelbild */}
         <ImageUpload
           value={cover}
           onPick={pickCover}
@@ -812,7 +801,7 @@ export function EntryForm({
           disabled={busy}
         />
 
-        {/* 8 — Galerie */}
+        {/* 9 — Galerie */}
         <GalleryUpload
           items={gallery}
           max={GALLERY_MAX}
@@ -825,7 +814,7 @@ export function EntryForm({
         />
       </Section>
 
-      {/* 9 — Audio (nur Admin) */}
+      {/* 10 — Audio (nur Admin) */}
       {isAdmin && (
         <Section title="Ton">
           <AudioUpload

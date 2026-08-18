@@ -12,3 +12,6 @@ next-env.d.ts
 
 # System
 .DS_Store
+
+# Kompilierte Artefakte aus Test-Läufen (Quellen sind .ts/.tsx)
+src/**/*.js

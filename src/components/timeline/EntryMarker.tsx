@@ -4,7 +4,12 @@ import { memo, useState, type CSSProperties } from "react";
 import { categoryById, categoryPillStyle } from "@/lib/categories";
 import { formatEntryDate } from "@/lib/dates";
 import type { Entry } from "@/lib/types";
-import { ENTRY_ANCHOR, ENTRY_WIDTH, type Side } from "@/lib/timelinePosition";
+import {
+  ENTRY_ANCHOR,
+  entryRank,
+  markerShowsYear,
+  type Side,
+} from "@/lib/timelinePosition";
 
 interface EntryMarkerProps {
   entry: Entry;
@@ -12,6 +17,8 @@ interface EntryMarkerProps {
   x: number;
   /** Linke Kante der Karte (bereits an die Ränder geklemmt). */
   left: number;
+  /** Gewählte Breite — schmaler, wenn es sonst eng würde. */
+  width: number;
   /** Ober- oder unterhalb der Achse. */
   side: Side;
   /** Abstand Achse → achsnahe Kante der Karte. */
@@ -42,19 +49,46 @@ function MilestoneStar() {
 }
 
 /**
+ * Zeichen für einen heruntergestuften WICHTIGEN Eintrag: derselbe Farbpunkt wie
+ * bei einem normalen Eintrag, aber mit einem feinen Fuchs-Ring darum. Bewusst
+ * kein Stern — der gehört den Meilensteinen. Der Ring sagt „das hier ist mehr
+ * als eine Notiz", ohne die Stufe darüber zu beanspruchen.
+ */
+function ImportantDot({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="relative flex h-[11px] w-[11px] shrink-0 items-center justify-center rounded-full border border-fox/70"
+    >
+      <span
+        className="h-[5px] w-[5px] rounded-full"
+        style={{ backgroundColor: color }}
+      />
+    </span>
+  );
+}
+
+/**
  * Kompakter Marker für einen Eintrag — ein Stiel zur Achse plus eine schmale
  * Pille, die KOMPLETT in der Kategoriefarbe steht: helle Tint-Fläche, farbiger
  * Rahmen, dunkle Ink-Schrift. So ist die Einordnung schon aus zwei Metern
  * Entfernung erkennbar, ohne dass der Titel an Kontrast verliert.
  *
- * Ein Meilenstein, für den gerade keine große Karte passt, läuft hier ebenfalls
- * mit — erkennbar am Stern statt des Farbpunkts und am kräftigen Fuchs-Rahmen.
- * Beim Hineinzoomen wird wieder eine Karte daraus.
+ * Die Pille ist NICHT immer gleich breit: Wo es eng wird, setzt das Layout sie
+ * schmaler (siehe `MARKER_WIDTHS`). Als Erstes fällt dabei die Jahreszahl weg —
+ * sie steht ohnehin an der Achse darunter —, danach wird der Titel früher
+ * beschnitten. Lieber ein knapper Titel als ein anonymes „+N".
+ *
+ * Wer eine Stufe höher gehört, aber gerade keine Karte bekommen hat, läuft hier
+ * ebenfalls mit — erkennbar am Zeichen ganz links: Stern für Meilensteine,
+ * Punkt-Ring für wichtige Einträge. Beim Hineinzoomen wird wieder eine Karte
+ * daraus.
  */
 function EntryMarker({
   entry,
   x,
   left,
+  width,
   side,
   offset,
   height,
@@ -64,7 +98,10 @@ function EntryMarker({
   onSelect,
 }: EntryMarkerProps) {
   const category = categoryById(entry.category);
-  const isMilestone = entry.is_milestone;
+  const rank = entryRank(entry);
+  const isMilestone = rank === "milestone";
+  const isImportant = rank === "important";
+  const showYear = markerShowsYear(width);
 
   /*
    * Der Eingang wird EINMAL beim Montieren festgelegt und danach abgeräumt:
@@ -96,6 +133,12 @@ function EntryMarker({
   const stemEdge: CSSProperties =
     side === "above" ? { bottom: height - axisY } : { top: axisY };
 
+  const rankLabel = isMilestone
+    ? "Meilenstein: "
+    : isImportant
+      ? "Wichtig: "
+      : "";
+
   return (
     <>
       <span
@@ -114,13 +157,13 @@ function EntryMarker({
       <button
         type="button"
         onClick={() => onSelect(entry)}
-        aria-label={`${isMilestone ? "Meilenstein: " : ""}${entry.title}, ${formatEntryDate(entry)}`}
+        aria-label={`${rankLabel}${entry.title}, ${formatEntryDate(entry)}`}
         title={entry.title}
         className={`tl-marker absolute flex h-[26px] cursor-pointer items-center gap-1.5 rounded-full border pr-2.5 text-left shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox ${
           isMilestone ? "tl-marker--milestone" : ""
-        } ${highlighted ? "tl-marker--active animate-pulse-ring" : ""} ${
-          enter.className
-        }`}
+        } ${isImportant ? "tl-marker--important" : ""} ${
+          highlighted ? "tl-marker--active animate-pulse-ring" : ""
+        } ${enter.className}`}
         onAnimationEnd={(event) => {
           if (event.target === event.currentTarget && enter.className) {
             setEnter({ className: "", delay: null });
@@ -136,7 +179,7 @@ function EntryMarker({
             : null),
           left,
           ...anchorEdge,
-          width: ENTRY_WIDTH,
+          width,
           // Punkt bzw. Stern sitzt exakt über dem Ankerpunkt der Achse. Wurde
           // die Karte am Rand geklemmt, wandert er innerhalb der Karte mit
           // (begrenzt, damit der Titel lesbar bleibt).
@@ -151,6 +194,8 @@ function EntryMarker({
       >
         {isMilestone ? (
           <MilestoneStar />
+        ) : isImportant ? (
+          <ImportantDot color={category.color} />
         ) : (
           <span
             aria-hidden="true"
@@ -164,9 +209,11 @@ function EntryMarker({
         <span className="min-w-0 flex-1 truncate text-[12px] leading-4 font-semibold">
           {entry.title}
         </span>
-        <span className="shrink-0 text-[10.5px] leading-4 font-medium opacity-70 tabular-nums">
-          {entry.year}
-        </span>
+        {showYear && (
+          <span className="shrink-0 text-[10.5px] leading-4 font-medium opacity-70 tabular-nums">
+            {entry.year}
+          </span>
+        )}
       </button>
     </>
   );

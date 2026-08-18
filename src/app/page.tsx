@@ -7,19 +7,26 @@ import { timelineDomain } from "@/lib/timelinePosition";
 import type { Entry } from "@/lib/types";
 import { upsertEntry, useEntries } from "@/hooks/useEntries";
 import { useRealtimeEntries } from "@/hooks/useRealtimeEntries";
+import { useSettings } from "@/hooks/useSettings";
 import FilterBar, {
   INITIAL_FILTER,
   usesClassFilter,
   type FilterState,
 } from "@/components/timeline/FilterBar";
-import NewEntriesBeacon, {
-  type Announcement,
-} from "@/components/timeline/NewEntriesBeacon";
+import NewEntriesBeacon from "@/components/timeline/NewEntriesBeacon";
 import Timeline, { type FocusRequest } from "@/components/timeline/Timeline";
 import "@/components/timeline/timeline.css";
 
-/** Nach dieser Ruhezeit gilt der Zeitstrahl als „unbenutzt" — dann fliegt die Kamera. */
-const IDLE_BEFORE_FLIGHT_MS = 3000;
+/**
+ * Nach dieser Ruhezeit gilt der Zeitstrahl als „unbenutzt" — dann fliegt die
+ * Kamera von selbst zum nächsten neuen Eintrag. Acht Sekunden, weil vor der
+ * Tafel Menschen stehen und lesen: Wer einen langen Text durchgeht, hat nach
+ * drei Sekunden noch lange nicht aufgehört hinzusehen.
+ */
+const IDLE_BEFORE_FLIGHT_MS = 8000;
+
+/** So oft wird geprüft, ob die Ruhezeit erreicht ist. */
+const IDLE_CHECK_MS = 1000;
 
 /** Breiten der Platzhalter-Marker — unregelmäßig, damit es nach Zeitstrahl aussieht. */
 const SKELETON_MARKERS = [86, 122, 96, 138, 92];
@@ -76,19 +83,21 @@ export default function Home() {
   const [filter, setFilter] = useState<FilterState>(INITIAL_FILTER);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
 
-  /** Der zuletzt eingetroffene Eintrag — Stoff für die Meldung unten links. */
-  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   /** Neue Einträge, die noch niemand angesehen hat (ältester zuerst). */
   const [pending, setPending] = useState<Entry[]>([]);
-  /** Wie viele Einträge dieser Serie schon angeflogen wurden („3 von 5"). */
-  const [seen, setSeen] = useState(0);
   /** Liegt ein Fenster über dem Zeitstrahl? Dann ruht der Zähler-Kreis. */
   const [overlayOpen, setOverlayOpen] = useState(false);
 
   /** Zeitpunkt der letzten Nutzer-Interaktion mit dem Zeitstrahl. */
   const lastInteractionRef = useRef(0);
   const focusNonceRef = useRef(0);
-  const announceNonceRef = useRef(0);
+
+  /** Live-Übertragung und Vollbild sind pro Gerät einstellbar. */
+  const { settings } = useSettings();
+
+  /** Immer der aktuelle Stand der Schlange — für den Selbstlauf weiter unten. */
+  const pendingRef = useRef<Entry[]>(pending);
+  pendingRef.current = pending;
 
   const now = useMemo(() => nowYearFraction(), []);
   // Gesamtbereich aus ALLEN Einträgen — Filter sollen die Achse nicht verschieben.
@@ -136,52 +145,65 @@ export default function Home() {
   );
 
   /**
-   * Ein neuer Eintrag ist eingetroffen. Gemeldet wird er immer — unten links.
-   * Ob die Kamera auch hinfliegt, entscheidet die Ruhezeit: Wer gerade zoomt
-   * oder schiebt, wird nicht unterbrochen; sein Eintrag reiht sich in den
-   * Zähler ein und kann später der Reihe nach angesehen werden.
+   * Ein neuer Eintrag ist eingetroffen. Er stellt sich hinten in die Schlange —
+   * der Kreis unten links zählt einen hoch. Angesehen wird er entweder per
+   * Klick oder von selbst, sobald acht Sekunden lang niemand etwas getan hat.
+   * Wer gerade zoomt oder schiebt, wird also nie unterbrochen.
    */
-  const handleInserted = useCallback(
+  const handleInserted = useCallback((entry: Entry) => {
+    setPending((current) =>
+      current.some((e) => e.id === entry.id) ? current : [...current, entry]
+    );
+  }, []);
+
+  /** Zum nächsten neuen Eintrag springen und ihn aus der Schlange nehmen. */
+  const handleJump = useCallback(
     (entry: Entry) => {
-      announceNonceRef.current += 1;
-      setAnnouncement({ entry, nonce: announceNonceRef.current });
-
-      if (Date.now() - lastInteractionRef.current > IDLE_BEFORE_FLIGHT_MS) {
-        focusEntry(entry);
-        return;
-      }
-
-      setPending((current) =>
-        current.some((e) => e.id === entry.id) ? current : [...current, entry]
-      );
+      setPending((current) => current.filter((e) => e.id !== entry.id));
+      focusEntry(entry);
     },
     [focusEntry]
   );
 
-  /** Klick auf Meldung oder Zähler-Kreis: zum nächsten neuen Eintrag. */
-  const handleJump = useCallback(
-    (entry: Entry) => {
-      if (pending.some((e) => e.id === entry.id)) {
-        setPending((current) => current.filter((e) => e.id !== entry.id));
-        setSeen((count) => count + 1);
-      }
-      focusEntry(entry);
-    },
-    [pending, focusEntry]
-  );
-
-  // Ist die Serie durchgesehen, beginnt die Zählung wieder bei null.
+  /*
+   * Der Selbstlauf. Geprüft wird sekündlich, geflogen erst nach der vollen
+   * Ruhezeit — und nach jedem Flug beginnt sie von vorn. So arbeitet sich die
+   * Kamera in ruhigem Takt durch die Schlange, statt sie in einem Rutsch
+   * abzuräumen. Liegt ein Fenster über dem Zeitstrahl, ruht der Selbstlauf:
+   * Wer gerade liest, will nicht weggeflogen werden.
+   */
   useEffect(() => {
-    if (pending.length === 0 && seen !== 0) setSeen(0);
-  }, [pending.length, seen]);
+    if (pending.length === 0 || overlayOpen) return;
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastInteractionRef.current < IDLE_BEFORE_FLIGHT_MS) {
+        return;
+      }
+      lastInteractionRef.current = Date.now();
+      const next = pendingRef.current[0];
+      if (next) handleJump(next);
+    }, IDLE_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [pending.length, overlayOpen, handleJump]);
 
+  /*
+   * Live-Übertragung — nur, wenn sie eingeschaltet ist. Ist sie aus, wird gar
+   * kein Kanal geöffnet: Die Seite zeigt dann den Stand vom Laden, und der
+   * Zähler-Kreis bleibt entsprechend leer.
+   */
   useRealtimeEntries({
+    enabled: settings.realtime,
     onUpsert: handleUpsert,
     onRemove: handleRemove,
     onInserted: handleInserted,
   });
 
   const noteInteraction = useCallback(() => {
+    lastInteractionRef.current = Date.now();
+  }, []);
+
+  // Der Ruhezeit-Zähler startet mit dem Laden der Seite, nicht bei null —
+  // sonst gälte der allererste Moment schon als „acht Sekunden nichts getan".
+  useEffect(() => {
     lastInteractionRef.current = Date.now();
   }, []);
 
@@ -277,9 +299,7 @@ export default function Home() {
         )}
 
         <NewEntriesBeacon
-          announcement={announcement}
           pending={pending}
-          seen={seen}
           hidden={overlayOpen}
           onJump={handleJump}
         />

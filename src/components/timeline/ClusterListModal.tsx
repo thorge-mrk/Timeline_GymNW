@@ -44,11 +44,25 @@ export default function ClusterListModal({
                   onClick={() => onSelect(entry)}
                   className="tl-marker flex w-full cursor-pointer items-center gap-2.5 rounded-xl border border-paper-line bg-paper px-3 py-2.5 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
                 >
-                  <span
-                    aria-hidden="true"
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: category.color }}
-                  />
+                  {/* Rang bleibt auch in der Liste sichtbar: Stern für
+                      Meilensteine, Fuchs-Ring für wichtige Einträge. */}
+                  {entry.is_important && !entry.is_milestone ? (
+                    <span
+                      aria-hidden="true"
+                      className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full border border-fox/70"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: category.color }}
+                      />
+                    </span>
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: category.color }}
+                    />
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-coal">
                       {entry.is_milestone && (

@@ -3,27 +3,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { scaleLinear } from "d3-scale";
 import { select } from "d3-selection";
-import { zoom, zoomIdentity, type D3ZoomEvent, type ZoomBehavior } from "d3-zoom";
+import {
+  zoom,
+  zoomIdentity,
+  type D3ZoomEvent,
+  type ZoomBehavior,
+  type ZoomTransform,
+} from "d3-zoom";
 import "d3-transition";
 
-import { entryYearFraction, nowYearFraction } from "@/lib/dates";
+import { entryYearFraction } from "@/lib/dates";
 import type { Entry } from "@/lib/types";
 import {
   CLUSTER_HEIGHT,
   CLUSTER_WIDTH,
-  ENTRY_WIDTH,
   buildAxisTicks,
+  edgePadding,
+  panLimits,
   planTimeline,
   positionTimeline,
   quantizeZoom,
   type EntryCluster,
+  type PanContext,
   type TimelineDomain,
 } from "@/lib/timelinePosition";
 
 import ClusterListModal from "./ClusterListModal";
 import EntryDetailModal from "./EntryDetailModal";
 import EntryMarker from "./EntryMarker";
-import MilestoneCard from "./MilestoneCard";
+import MilestoneCard, { ImportantEntryCard } from "./MilestoneCard";
 import TimelineAxis from "./TimelineAxis";
 import "./timeline.css";
 
@@ -145,16 +153,27 @@ export default function Timeline({
 
   /* ---------------------------------------------------------------- Skala */
 
-  const now = useMemo(() => nowYearFraction(), []);
   const domainSpan = Math.max(domain.end - domain.start, 1);
 
-  /** Bruchteil-Jahr → Basis-Pixel (ohne Zoom). */
+  /**
+   * Rand links und rechts, in dem KEINE Einträge liegen — der Platz, den die
+   * äußersten Karten brauchen, um vollständig im Bild zu stehen. Er ist aus den
+   * Kartenmaßen abgeleitet (siehe `edgePadding`), nicht geraten.
+   */
+  const pad = useMemo(() => edgePadding(width), [width]);
+
+  /**
+   * Bruchteil-Jahr → Basis-Pixel (ohne Zoom). Der Wertebereich ist bewusst um
+   * den Rand eingerückt: Die ACHSE läuft weiterhin über die volle Breite, die
+   * Einträge halten aber Abstand zum Bildrand.
+   */
   const baseScale = useMemo(() => {
-    const scale = scaleLinear()
+    const safeWidth = Math.max(width, 1);
+    const inner = Math.max(safeWidth - pad.left - pad.right, 1);
+    return scaleLinear()
       .domain([domain.start, domain.end])
-      .range([0, Math.max(width, 1)]);
-    return scale;
-  }, [domain.start, domain.end, width]);
+      .range([pad.left, pad.left + inner]);
+  }, [domain.start, domain.end, width, pad.left, pad.right]);
 
   /** Größter Zoomfaktor: Sichtspanne von etwa drei Monaten. */
   const maxScale = Math.max(1, domainSpan / MIN_VISIBLE_YEARS);
@@ -163,6 +182,36 @@ export default function Timeline({
   const toX = useCallback(
     (yearFraction: number) => k * baseScale(yearFraction),
     [k, baseScale]
+  );
+
+  /* ------------------------------------------------ Grenzen des Schiebens */
+
+  /**
+   * Alles, was `panLimits` braucht. Liegt zusätzlich in einem Ref, weil die
+   * d3-Begrenzungsfunktion nur einmal (beim Montieren) registriert wird, aber
+   * bei jeder Geste den aktuellen Stand sehen muss.
+   */
+  const panContext = useMemo<PanContext>(
+    () => ({
+      worldWidth: Math.max(width, 1),
+      firstX: baseScale(domain.firstEntry),
+      lastX: baseScale(domain.lastEntry),
+      padLeft: pad.left,
+      padRight: pad.right,
+    }),
+    [width, baseScale, domain.firstEntry, domain.lastEntry, pad.left, pad.right]
+  );
+  const panContextRef = useRef(panContext);
+  panContextRef.current = panContext;
+
+  /** Erlaubte Verschiebung `x` bei Zoomfaktor `targetK` (Bildschirm-Pixel). */
+  const translateRange = useCallback(
+    (targetK: number, viewport: number) => {
+      const { min, max } = panLimits(panContextRef.current, targetK);
+      // Sichtfenster [(0−x)/k, (viewport−x)/k] muss in [min, max] liegen.
+      return { lower: viewport - max * targetK, upper: -min * targetK };
+    },
+    []
   );
 
   /* ------------------------------------------------------- Vertikales Maß */
@@ -218,14 +267,18 @@ export default function Timeline({
 
   const visibleMarkers = useMemo(() => {
     if (!layout) return [];
-    return layout.markers.filter((m) => m.left + ENTRY_WIDTH >= lo && m.left <= hi);
+    return layout.markers.filter((m) => m.left + m.width >= lo && m.left <= hi);
+  }, [layout, lo, hi]);
+
+  const visibleImportant = useMemo(() => {
+    if (!layout) return [];
+    return layout.important.filter((m) => m.left + m.width >= lo && m.left <= hi);
   }, [layout, lo, hi]);
 
   const visibleMilestones = useMemo(() => {
     if (!layout) return [];
-    const cardWidth = layout.milestone.width;
     return layout.milestones.filter(
-      (m) => m.left + cardWidth >= lo && m.left <= hi
+      (m) => m.left + m.width >= lo && m.left <= hi
     );
   }, [layout, lo, hi]);
 
@@ -236,13 +289,14 @@ export default function Timeline({
 
   const ticks = useMemo(() => {
     if (width <= 0) return [];
-    const pxPerYear = (k * width) / domainSpan;
+    const inner = Math.max(width - pad.left - pad.right, 1);
+    const pxPerYear = (k * inner) / domainSpan;
     return buildAxisTicks(
       pxPerYear,
       baseScale.invert(lo / k),
       baseScale.invert(hi / k)
     );
-  }, [k, width, domainSpan, baseScale, lo, hi]);
+  }, [k, width, pad.left, pad.right, domainSpan, baseScale, lo, hi]);
 
   /* ---------------------------------------------------------- Zoom & Pan */
 
@@ -270,6 +324,32 @@ export default function Timeline({
           (event.ctrlKey ? 10 : 1) *
           WHEEL_DAMPING
       )
+      /*
+       * ZOOMABHÄNGIGE SCHIEBEGRENZE.
+       *
+       * Statt eines festen `translateExtent` (das den Zoomfaktor nicht kennt)
+       * hängt hier eine eigene Begrenzung: Sie wird von d3 bei JEDER Geste mit
+       * dem gerade gültigen `k` aufgerufen und darf den Ausschnitt korrigieren.
+       *
+       * `panLimits` liefert den erlaubten Bereich im Welt-Raum; herausgezoomt
+       * ist das der volle Zeitraum (großzügig, mit Luft bis 2027),
+       * hineingezoomt rückt das Ende bis dicht an den letzten Eintrag heran.
+       * Die y-Achse wird dabei immer auf 0 gezogen — vertikal wird nie bewegt.
+       */
+      .constrain((current: ZoomTransform, extent) => {
+        const viewport = extent[1][0] - extent[0][0];
+        if (viewport <= 0) return current;
+        const { lower, upper } = translateRange(current.k, viewport);
+        const wanted =
+          lower > upper
+            ? (lower + upper) / 2
+            : clamp(current.x, lower, upper);
+        if (wanted === current.x && current.y === 0) return current;
+        return current.translate(
+          (wanted - current.x) / current.k,
+          -current.y / current.k
+        );
+      })
       .on("start", (event: D3ZoomEvent<HTMLDivElement, unknown>) => {
         if (!event.sourceEvent) return;
         draggedRef.current = false;
@@ -308,7 +388,7 @@ export default function Timeline({
       selection.on(".zoom", null);
       zoomRef.current = null;
     };
-  }, []);
+  }, [translateRange]);
 
   // Grenzen nachziehen, sobald sich Größe oder Datenbestand ändern.
   useEffect(() => {
@@ -319,14 +399,19 @@ export default function Timeline({
         [0, 0],
         [width, Math.max(height, 1)],
       ])
-      .scaleExtent([1, maxScale])
-      .translateExtent([
-        [0, -Infinity],
-        [width, Infinity],
-      ]);
+      .scaleExtent([1, maxScale]);
   }, [width, height, maxScale]);
 
-  // Größe messen; beim Breitenwechsel den Ausschnitt proportional mitnehmen.
+  /*
+   * Größe messen. Der ResizeObserver hängt an der Zeichenfläche selbst, nicht
+   * am Fenster — dadurch greift er auch, wenn nur die HÖHE sich ändert, etwa
+   * weil im Vollbildmodus die Fußzeile verschwindet. Die neue Höhe fließt über
+   * `aboveHeight`/`belowHeight` direkt in `planTimeline`, das Band- und
+   * Spurlayout wird also sofort neu gefasst.
+   *
+   * Beim BREITENwechsel wird der Ausschnitt zusätzlich proportional
+   * mitgenommen, damit man nach einer Drehung dieselbe Stelle ansieht.
+   */
   useEffect(() => {
     const node = hostRef.current;
     if (!node) return;
@@ -383,15 +468,20 @@ export default function Timeline({
     []
   );
 
-  /** Verschiebung so wählen, dass `center` in der Mitte liegt (im gültigen Bereich). */
+  /**
+   * Verschiebung so wählen, dass `center` in der Mitte liegt — begrenzt auf den
+   * bei diesem Zoomfaktor erlaubten Bereich. `behavior.transform` läuft nicht
+   * durch d3s Begrenzung, deshalb wird hier mit derselben Rechnung geklemmt.
+   */
   const translationFor = useCallback(
-    (center: number, targetK: number) =>
-      clamp(
-        width / 2 - targetK * baseScale(center),
-        -(targetK - 1) * width,
-        0
-      ),
-    [width, baseScale]
+    (center: number, targetK: number) => {
+      const { lower, upper } = translateRange(targetK, width);
+      const wanted = width / 2 - targetK * baseScale(center);
+      return lower > upper
+        ? (lower + upper) / 2
+        : clamp(wanted, lower, upper);
+    },
+    [width, baseScale, translateRange]
   );
 
   /** Fliegt auf einen Zeitraum (z. B. einen Cluster). */
@@ -532,9 +622,7 @@ export default function Timeline({
                 ticks={ticks}
                 toX={toX}
                 contentWidth={contentWidth}
-                height={height}
                 axisY={axisY}
-                now={now}
               />
 
               {/*
@@ -560,12 +648,30 @@ export default function Timeline({
                 />
               ))}
 
+              {visibleImportant.map((placement, index) => (
+                <ImportantEntryCard
+                  key={`${filterKey}:${placement.item.id}`}
+                  entry={placement.item}
+                  x={placement.x}
+                  left={placement.left}
+                  side={placement.side}
+                  offset={placement.offset}
+                  height={height}
+                  axisY={axisY}
+                  layout={layout.importantLayout}
+                  highlighted={highlightId === placement.item.id}
+                  enterDelay={enterDelayFor(entering, index)}
+                  onSelect={handleSelect}
+                />
+              ))}
+
               {visibleMarkers.map((placement, index) => (
                 <EntryMarker
                   key={`${filterKey}:${placement.item.id}`}
                   entry={placement.item}
                   x={placement.x}
                   left={placement.left}
+                  width={placement.width}
                   side={placement.side}
                   offset={placement.offset}
                   height={height}
@@ -576,13 +682,18 @@ export default function Timeline({
                 />
               ))}
 
+              {/*
+                „+N“ ist die letzte Möglichkeit, nicht die erste: Erst wenn
+                selbst die schmalste Pille in keiner Spur mehr Platz findet,
+                entsteht ein Badge. Es bleibt deshalb bewusst klein und leise.
+              */}
               {visibleClusters.map((cluster) => (
                 <button
                   key={cluster.key}
                   type="button"
                   onClick={() => handleCluster(cluster)}
                   aria-label={`${cluster.entries.length} weitere Einträge — hineinzoomen`}
-                  className="tl-cluster tl-appear absolute flex items-center justify-center rounded-full bg-navy text-[11px] font-bold tracking-tight text-paper tabular-nums shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+                  className="tl-cluster tl-appear absolute flex items-center justify-center rounded-full bg-navy/85 text-[10px] font-bold tracking-tight text-paper tabular-nums shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
                   style={{
                     left: cluster.left,
                     ...(cluster.side === "above"
@@ -603,8 +714,8 @@ export default function Timeline({
           Weicher Rand: die Zeitfläche läuft nach links und rechts ins Papier
           aus, statt Karten hart abzuschneiden. Liegt bewusst NEBEN dem
           verschobenen Inhalt — es soll am Bildschirmrand kleben, nicht mitfahren.
-          Schmal gehalten, damit der „Heute“-Marker am rechten Rand der
-          Gesamtansicht nicht verblasst.
+          Ein Teil seiner Breite steckt in `edgePadding`, damit die äußersten
+          Karten nicht im Verlauf verschwinden.
         */}
         <span
           aria-hidden="true"

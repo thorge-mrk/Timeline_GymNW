@@ -1,7 +1,14 @@
 -- =============================================================================
--- BEISPIELDATEN für den Zeitstrahl (nur für Entwicklung/Tests).
--- 16 fiktive, aber realistische Einträge über 1971–2025, damit der Zeitstrahl
--- beim Entwickeln gut aussieht. KEINE echten historischen Daten der Schule!
+-- BEISPIELDATEN für den Zeitstrahl (NUR für Entwicklung/Tests).
+--
+-- ⚠️  ACHTUNG: Diese Einträge sind ERFUNDEN. Titel, Texte, Datumsangaben und
+--     Zahlen (z. B. „42 Schülerinnen und Schüler“) sind frei ausgedacht und
+--     klingen absichtlich plausibel — sie sind KEINE historischen Daten des
+--     Gymnasiums Neu Wulmstorf und dürfen NICHT in die öffentliche Datenbank
+--     gelangen. Vor dem Go-Live restlos entfernen (Befehl unten).
+--
+--     Vor der Veröffentlichung gilt: Jeder Eintrag auf dem Zeitstrahl sollte
+--     entweder von einer Person der Schule stammen oder belegbar sein.
 --
 -- created_by zeigt auf den Dev-Admin-Account (dev-admin@zeitstrahl-gymnw.de,
 -- uid b68a0806-c95d-4ca8-ab19-bda47600ff78). Falls dieser Account nicht
