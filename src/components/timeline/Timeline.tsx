@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { scaleLinear } from "d3-scale";
 import { select } from "d3-selection";
 import {
@@ -13,18 +20,23 @@ import {
 import "d3-transition";
 
 import { entryYearFraction } from "@/lib/dates";
-import type { Entry } from "@/lib/types";
+import type { Entry, Voice } from "@/lib/types";
 import {
   CLUSTER_HEIGHT,
   CLUSTER_WIDTH,
+  ENTRY_WIDTH,
+  PLAN_SHRINK_TOLERANCE,
   buildAxisTicks,
   edgePadding,
   panLimits,
   planTimeline,
   positionTimeline,
   quantizeZoom,
+  scaleThatFrees,
+  sliceVisible,
   type EntryCluster,
   type PanContext,
+  type PlanOptions,
   type TimelineDomain,
 } from "@/lib/timelinePosition";
 
@@ -37,16 +49,49 @@ import "./timeline.css";
 
 /** Kleinste sinnvolle Sichtspanne: drei Monate. Bestimmt den maximalen Zoom. */
 const MIN_VISIBLE_YEARS = 0.25;
-/** Kontext (in Jahren), der beim Anfliegen eines Eintrags sichtbar bleibt. */
-const FOCUS_SPAN_YEARS = 8;
+/**
+ * Kontext (in Jahren), der beim Anfliegen eines Eintrags mindestens
+ * WEGGEZOOMT wird. Drei Jahre: Auf einem Schirm dieser Breite trägt die Achse
+ * dann Monatsstriche — man sieht nicht nur „irgendwo 2022", sondern den Monat.
+ * Ist der Jahrgang dicht, geht der Flug von hier aus noch weiter hinein, bis
+ * der Eintrag frei steht (siehe `scaleThatFrees`).
+ */
+const FOCUS_SPAN_YEARS = 3;
 /** Dauer des Kamerafluges — eine erklärende Bewegung, die länger dauern darf. */
 const FLY_DURATION = 800;
+
+/* --- Mausrad, Trackpad, Kneifen ------------------------------------------ */
+
 /**
- * Dämpfung des Mausrad-Zooms. d3 rechnet einen Rasterklick in ~0,002 · deltaY
- * um; das ist auf vielen Mäusen ein spürbarer Sprung. Mit gut der Hälfte davon
- * lässt sich der Ausschnitt dosieren, statt ihn zu treffen.
+ * Zoomkraft eines Mausrad-/Wisch-Ereignisses, umgerechnet aus `deltaY`.
+ * d3 rechnet mit 0,002 je Pixel; das ist auf vielen Mäusen ein Sprung.
  */
-const WHEEL_DAMPING = 0.55;
+const WHEEL_STRENGTH = 0.0016;
+/**
+ * Deckel für EIN Ereignis. Ein Rasterklick liefert je nach Maus und System
+ * 100, 120 oder auch 240 — ohne Deckel zoomt dieselbe Bewegung auf jedem
+ * Rechner anders weit. Mit Deckel fühlt sich ein Klick überall gleich an
+ * (≈ 12 %), und schnelles Drehen bleibt schnell, weil dann MEHR Ereignisse
+ * kommen, nicht größere.
+ */
+const WHEEL_MAX_STEP = 0.115;
+/**
+ * Kneifen am Trackpad (kommt als ctrl+wheel an) darf kräftiger zupacken — es
+ * ist eine direkte Geste, da erwartet man, dass etwas passiert. Entspricht
+ * d3s Standardstärke, ungedämpft.
+ */
+const PINCH_STRENGTH = 0.02;
+const PINCH_MAX_STEP = 0.3;
+
+/**
+ * Ruhezeit, nach der eine Geste als „steht" gilt. Erst dann wird das Layout
+ * neu gefasst (Spuren, Bündel, Pillenbreiten) — siehe `planK` weiter unten.
+ * 160 ms ist länger als der Abstand zweier Rasterklicks beim zügigen Drehen
+ * und kurz genug, dass sich die Tafel unmittelbar nach dem Loslassen ordnet.
+ * Genau dazwischen liegt der Unterschied zwischen „ordnet sich, wenn ich
+ * innehalte" und „zappelt beim Zoomen".
+ */
+const SETTLE_MS = 160;
 
 /* --- Gestaffelter Eingang nach Filterwechsel ----------------------------- */
 
@@ -92,10 +137,30 @@ interface TimelineProps {
    * Choreografie — der Rest der Tafel soll dabei ruhig bleiben.
    */
   filterKey: string;
+  /**
+   * Wie viele weitere Menschen sich an dieses Thema erinnern. Steht als
+   * kleiner Zähler an der Pille — und im geöffneten Fenster stehen sie
+   * ausgeschrieben untereinander.
+   */
+  voiceCount?: (entryId: string) => number;
+  voicesFor?: (entryId: string) => Voice[];
+  /** Nur gesetzt, wenn jemand angemeldet ist: „auch meine Erinnerung dazu“. */
+  onAddVoice?: (entry: Entry) => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * Ein Radereignis meldet seinen Weg je nach Browser in Pixeln, ZEILEN oder
+ * SEITEN. Hier wird daraus überall dasselbe Maß: Pixel. 24 px je Zeile sind
+ * so gewählt, dass ein Mausklick mit drei Zeilen genauso weit zoomt wie einer
+ * mit hundert Pixeln — sonst zoomte Firefox unter Linux ganz anders als alle
+ * anderen.
+ */
+function wheelUnit(event: WheelEvent): number {
+  return event.deltaMode === 1 ? 24 : event.deltaMode === 2 ? 400 : 1;
 }
 
 export default function Timeline({
@@ -106,6 +171,9 @@ export default function Timeline({
   emptyHint,
   onOverlayChange,
   filterKey,
+  voiceCount,
+  voicesFor,
+  onAddVoice,
 }: TimelineProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -113,8 +181,37 @@ export default function Timeline({
 
   const [size, setSize] = useState({ width: 0, height: 0 });
   const sizeRef = useRef(size);
+
+  /*
+   * ZWEI STÄNDE, NICHT EINER.
+   *
+   * `transformRef` ist der LEBENDE Ausschnitt — er wird bei jedem einzelnen
+   * Rad- und Zeigerereignis fortgeschrieben, und die Verschiebung landet
+   * sofort am DOM. Nichts wartet darauf, dass React fertig wird.
+   *
+   * `transform` (Zustand) ist der GEZEICHNETE Ausschnitt. Er wird höchstens
+   * einmal pro Bild nachgezogen. Vorher lief bei jedem Radklick ein voller
+   * Durchgang durch React — bei einem Trackpad, das gut hundertmal je Sekunde
+   * meldet, also mehrmals pro Bild. Genau daher kam das Haken.
+   */
   const [transform, setTransform] = useState({ k: 1, x: 0 });
   const transformRef = useRef(transform);
+  /** Der zuletzt GEZEICHNETE Stand — woran das DOM gerade wirklich hängt. */
+  const renderedRef = useRef(transform);
+  /** Angemeldetes Bild, in dem der Zustand nachgezogen wird (0 = keins). */
+  const frameRef = useRef(0);
+
+  /*
+   * Zoomfaktor, auf dem die LAYOUT-ENTSCHEIDUNGEN beruhen (Spuren, Seiten,
+   * Bündel, Pillenbreiten). Er folgt dem Zoom absichtlich NICHT sofort,
+   * sondern erst, wenn die Geste steht — sonst wird mitten in der Bewegung
+   * umsortiert, und das sieht man als Ruck: Pillen wechseln die Spur, Bündel
+   * platzen auf. Wer zoomt, will die Bewegung sehen, nicht das Umräumen.
+   */
+  const [planK, setPlanK] = useState(1);
+  const planKRef = useRef(1);
+  /** Läuft die Ruhezeit-Uhr? (Zeitgeber-Kennung, 0 = nein) */
+  const settleRef = useRef(0);
 
   /** Wurde die aktuelle Geste zum Ziehen benutzt? Dann keinen Klick auslösen. */
   const draggedRef = useRef(false);
@@ -147,6 +244,82 @@ export default function Timeline({
     const timer = window.setTimeout(() => setEntering(false), ENTER_WINDOW_MS);
     return () => window.clearTimeout(timer);
   }, [entering, filterKey]);
+
+  /* ------------------------------------------------- Takt der Bewegung ---- */
+
+  /** Verschiebung der Zeichenfläche ans DOM schreiben — der einzige Schreiber. */
+  const paintContent = useCallback((offsetX: number) => {
+    const node = contentRef.current;
+    if (node) node.style.transform = `translate3d(${offsetX}px,0,0)`;
+  }, []);
+
+  /**
+   * Den gezeichneten Ausschnitt an den lebenden angleichen — höchstens einmal
+   * je Bild. Hat sich nichts geändert, kommt derselbe Zustand zurück; React
+   * bricht dann ab, ohne irgendetwas anzufassen.
+   */
+  const scheduleFrame = useCallback(() => {
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      setTransform((current) => {
+        const live = transformRef.current;
+        return current.k === live.k && current.x === live.x ? current : live;
+      });
+    });
+  }, []);
+
+  /** Layout auf den aktuellen Zoom nachziehen (Geste steht oder ist zu Ende). */
+  const settlePlan = useCallback(() => {
+    if (settleRef.current) {
+      window.clearTimeout(settleRef.current);
+      settleRef.current = 0;
+    }
+    planKRef.current = transformRef.current.k;
+    setPlanK(planKRef.current);
+    // Der gezeichnete Ausschnitt muss zum frisch gefassten Plan passen, sonst
+    // stünde das Bild einen Sprung neben den Zahlen, aus denen es entsteht.
+    setTransform((current) => {
+      const live = transformRef.current;
+      return current.k === live.k && current.x === live.x ? current : live;
+    });
+  }, []);
+
+  /** Ruhezeit von vorn: `SETTLE_MS` ohne Ereignis, dann wird gefasst. */
+  const scheduleSettle = useCallback(() => {
+    if (settleRef.current) window.clearTimeout(settleRef.current);
+    settleRef.current = window.setTimeout(() => {
+      settleRef.current = 0;
+      settlePlan();
+    }, SETTLE_MS);
+  }, [settlePlan]);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (settleRef.current) window.clearTimeout(settleRef.current);
+    },
+    []
+  );
+
+  /*
+   * Die Verschiebung steht bewusst NICHT im `style`-Attribut der
+   * Zeichenfläche: Sonst könnte ein Durchgang, den React eine Lage später
+   * fertigstellt, die Fläche wieder dorthin zurückschreiben, wo der Finger
+   * längst nicht mehr ist. Stattdessen schreibt sie dieser Effekt nach jedem
+   * Durchgang — und während einer Geste zusätzlich der Zoom-Zuhörer.
+   *
+   * Welcher Wert gilt, hängt davon ab, was sich bewegt: Beim reinen SCHIEBEN
+   * ist der Zoom derselbe, also darf die lebende Verschiebung sofort gelten.
+   * Beim ZOOMEN gehören Verschiebung und Zoomfaktor zusammen — dort muss die
+   * Verschiebung zu dem Zoom passen, mit dem die Elemente gerade gesetzt
+   * wurden, sonst läuft das ganze Bild einen Frame lang schief.
+   */
+  useLayoutEffect(() => {
+    renderedRef.current = transform;
+    const live = transformRef.current;
+    paintContent(live.k === transform.k ? live.x : transform.x);
+  });
 
   const { width, height } = size;
   const { k, x } = transform;
@@ -227,25 +400,36 @@ export default function Timeline({
 
   /**
    * Zoomfaktor für die LAYOUT-ENTSCHEIDUNGEN — gerastert auf sechs Stufen pro
-   * Verdopplung. Dadurch wird die Verteilung auf Seiten und Spuren nur bei
-   * spürbaren Zoomschritten neu gefasst; dazwischen bleibt das Bild ruhig.
+   * Verdopplung, und zwar auf `planK`, nicht auf dem lebenden `k`. Beides
+   * zusammen hält das Bild ruhig: Das Raster fängt kleine Änderungen ab, und
+   * `planK` rührt sich erst, wenn die Geste steht.
    */
   const layoutScale = useMemo(
-    () => clamp(quantizeZoom(k), 1, maxScale),
-    [k, maxScale]
+    () => clamp(quantizeZoom(planK), 1, maxScale),
+    [planK, maxScale]
+  );
+
+  /**
+   * Alles, was `planTimeline` für einen bestimmten Zoomfaktor braucht.
+   * Ausgelagert, weil der Kameraflug denselben Bausatz benutzt, um
+   * durchzuprobieren, ab wann ein Eintrag frei steht.
+   */
+  const planOptionsFor = useCallback(
+    (scale: number): PlanOptions => ({
+      toLayoutX: (yearFraction) => scale * baseScale(yearFraction),
+      layoutContentWidth: Math.max(width, 1) * scale,
+      layoutScale: scale,
+      aboveHeight,
+      belowHeight,
+    }),
+    [baseScale, width, aboveHeight, belowHeight]
   );
 
   // Hängt bewusst NICHT an transform.x: Pannen darf kein Neu-Layout auslösen.
   const plan = useMemo(() => {
     if (width <= 0 || height <= 0) return null;
-    return planTimeline(entries, {
-      toLayoutX: (yearFraction) => layoutScale * baseScale(yearFraction),
-      layoutContentWidth: Math.max(width, 1) * layoutScale,
-      layoutScale,
-      aboveHeight,
-      belowHeight,
-    });
-  }, [entries, layoutScale, baseScale, width, height, aboveHeight, belowHeight]);
+    return planTimeline(entries, planOptionsFor(layoutScale));
+  }, [entries, layoutScale, planOptionsFor, width, height]);
 
   /** Die eigentlichen Pixel — stufenlos, damit nichts vom Datum abrückt. */
   const layout = useMemo(() => {
@@ -268,27 +452,47 @@ export default function Timeline({
   const lo = Math.floor((-x - width * 0.2) / windowStep) * windowStep;
   const hi = Math.ceil((-x + width * 1.2) / windowStep) * windowStep;
 
-  const visibleMarkers = useMemo(() => {
-    if (!layout) return [];
-    return layout.markers.filter((m) => m.left + m.width >= lo && m.left <= hi);
-  }, [layout, lo, hi]);
+  /*
+   * Die vier Listen kommen nach `left` sortiert aus `positionTimeline`,
+   * deshalb reicht hier eine Binärsuche auf die beiden Ränder — kein Durchgang
+   * durch alles bei jedem Bild. Bei sechzehn Einträgen ist das Kosmetik; bei
+   * den paar hundert, die sich in ein paar Schuljahren ansammeln, nicht mehr.
+   */
+  const visibleMarkers = useMemo(
+    () => (layout ? sliceVisible(layout.markers, lo, hi, ENTRY_WIDTH) : []),
+    [layout, lo, hi]
+  );
 
-  const visibleImportant = useMemo(() => {
-    if (!layout) return [];
-    return layout.important.filter((m) => m.left + m.width >= lo && m.left <= hi);
-  }, [layout, lo, hi]);
+  const visibleImportant = useMemo(
+    () =>
+      layout
+        ? sliceVisible(layout.important, lo, hi, layout.importantLayout.width)
+        : [],
+    [layout, lo, hi]
+  );
 
-  const visibleMilestones = useMemo(() => {
-    if (!layout) return [];
-    return layout.milestones.filter(
-      (m) => m.left + m.width >= lo && m.left <= hi
-    );
-  }, [layout, lo, hi]);
+  const visibleMilestones = useMemo(
+    () =>
+      layout
+        ? sliceVisible(layout.milestones, lo, hi, layout.milestone.width)
+        : [],
+    [layout, lo, hi]
+  );
 
-  const visibleClusters = useMemo(() => {
-    if (!layout) return [];
-    return layout.clusters.filter((c) => c.left + CLUSTER_WIDTH >= lo && c.left <= hi);
-  }, [layout, lo, hi]);
+  const visibleClusters = useMemo(
+    () => (layout ? sliceVisible(layout.clusters, lo, hi, CLUSTER_WIDTH) : []),
+    [layout, lo, hi]
+  );
+
+  /*
+   * Für die ACHSE ein engeres Fenster als für die Einträge. Ihre Striche und
+   * Zahlen sind die einzigen Elemente, die beim Zoomen in JEDEM Bild neu
+   * gesetzt werden — jeder Tick außerhalb des Bildes kostet also dauernd.
+   * Marker brauchen dagegen Vorlauf: Sie kommen mit einem kurzen Eingang
+   * herein, und der soll noch außerhalb des Bildes ablaufen.
+   */
+  const tickLo = Math.floor((-x - width * 0.05) / windowStep) * windowStep;
+  const tickHi = Math.ceil((-x + width * 1.05) / windowStep) * windowStep;
 
   const ticks = useMemo(() => {
     if (width <= 0) return [];
@@ -296,10 +500,10 @@ export default function Timeline({
     const pxPerYear = (k * inner) / domainSpan;
     return buildAxisTicks(
       pxPerYear,
-      baseScale.invert(lo / k),
-      baseScale.invert(hi / k)
+      baseScale.invert(tickLo / k),
+      baseScale.invert(tickHi / k)
     );
-  }, [k, width, pad.left, pad.right, domainSpan, baseScale, lo, hi]);
+  }, [k, width, pad.left, pad.right, domainSpan, baseScale, tickLo, tickHi]);
 
   /* ---------------------------------------------------------- Zoom & Pan */
 
@@ -308,6 +512,46 @@ export default function Timeline({
     if (!node) return;
 
     const selection = select<HTMLDivElement, unknown>(node);
+
+    /*
+     * ZWEIFINGER-WISCHEN QUER = SCHIEBEN.
+     *
+     * d3 wertet von Haus aus nur `deltaY` aus — auf einem Trackpad ist das
+     * Wischen nach links und rechts aber die selbstverständlichste Bewegung
+     * überhaupt, und sie tat bisher schlicht nichts. Damit sich Schieben und
+     * Zoomen nicht bekämpfen, entscheidet die Hauptrichtung des Wischens:
+     * quer heißt schieben, längs heißt zoomen. Mit gedrückter Umschalttaste
+     * schiebt auch das Mausrad — die übliche Abkürzung für „waagerecht".
+     *
+     * Hängt in der Abfangphase und VOR d3s eigenem Zuhörer, damit ein
+     * Querwisch gar nicht erst als Zoom ankommt.
+     */
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return; // Kneifen gehört dem Zoom
+
+      // Mit Umschalttaste ist ALLES waagerecht gemeint — manche Browser legen
+      // den Weg dann von sich aus auf `deltaX`, andere lassen ihn auf `deltaY`.
+      const sideways = event.shiftKey
+        ? event.deltaX || event.deltaY
+        : Math.abs(event.deltaX) > Math.abs(event.deltaY)
+          ? event.deltaX
+          : 0;
+      if (!sideways) return;
+
+      const behavior = zoomRef.current;
+      if (!behavior) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      // `translateBy` rechnet in Welt-Pixeln, gewischt wird in Bildschirm-Pixeln.
+      behavior.translateBy(
+        selection,
+        (-sideways * wheelUnit(event)) / transformRef.current.k,
+        0
+      );
+    };
+    node.addEventListener("wheel", onWheel, { capture: true, passive: false });
+
     const behavior = zoom<HTMLDivElement, unknown>()
       .filter((event: Event & { ctrlKey?: boolean; button?: number }) => {
         // Bedienelemente (Zoom-Knöpfe) dürfen keine Geste starten.
@@ -318,15 +562,28 @@ export default function Timeline({
         // Standardfilter von d3, aber Trackpad-Pinch (ctrl+wheel) erlaubt.
         return (!event.ctrlKey || event.type === "wheel") && !event.button;
       })
-      // Wie d3s Standardformel, nur gedämpft — ein Rasterklick soll schieben,
-      // nicht springen.
-      .wheelDelta(
-        (event: WheelEvent) =>
-          -event.deltaY *
-          (event.deltaMode === 1 ? 0.05 : event.deltaMode ? 1 : 0.002) *
-          (event.ctrlKey ? 10 : 1) *
-          WHEEL_DAMPING
-      )
+      /*
+       * Zoomkraft eines Radereignisses. Drei Geräte, ein Gefühl:
+       *
+       *   Maus      Ein Rasterklick meldet je nach Gerät und System 100, 120
+       *             oder auch 240 — ohne Deckel zoomt dieselbe Bewegung auf
+       *             jedem Rechner anders weit. Der Deckel macht daraus überall
+       *             denselben Schritt; schnelles Drehen bleibt trotzdem
+       *             schnell, weil dann MEHR Ereignisse kommen, nicht größere.
+       *   Trackpad  Zweifinger-Wischen meldet winzige Werte. Die bleiben weit
+       *             unter dem Deckel und zoomen dadurch stufenlos.
+       *   Kneifen   Kommt als ctrl+wheel und darf kräftiger zupacken — eine
+       *             direkte Geste soll sich direkt anfühlen.
+       *
+       * Zeilen- und Seitenmodus werden vorher auf Pixel umgerechnet, sonst
+       * wäre Firefox unter Linux (deltaMode 1) um Größenordnungen daneben.
+       */
+      .wheelDelta((event: WheelEvent) => {
+        const delta = event.deltaY * wheelUnit(event);
+        const strength = event.ctrlKey ? PINCH_STRENGTH : WHEEL_STRENGTH;
+        const cap = event.ctrlKey ? PINCH_MAX_STEP : WHEEL_MAX_STEP;
+        return -Math.sign(delta) * Math.min(Math.abs(delta) * strength, cap);
+      })
       /*
        * ZOOMABHÄNGIGE SCHIEBEGRENZE.
        *
@@ -368,33 +625,51 @@ export default function Timeline({
         const next = { k: event.transform.k, x: event.transform.x };
         transformRef.current = next;
 
-        // Direkt ans DOM: die Verschiebung fühlt sich dadurch auch dann flüssig
-        // an, wenn React einen Frame später rendert (gleicher Wert, kein Sprung).
-        if (contentRef.current) {
-          contentRef.current.style.transform = `translate3d(${next.x}px,0,0)`;
+        if (!event.sourceEvent) {
+          // Programmatische Fahrt (Kameraflug, Zoomknopf): d3 liefert dabei
+          // ohnehin höchstens ein Ereignis je Bild — Sammeln wäre hier reine
+          // Verzögerung.
+          setTransform(next);
+          scheduleSettle();
+          return;
         }
 
-        if (event.sourceEvent) {
-          const start = gestureStartRef.current;
-          if (
-            Math.abs(next.x - start.x) > 4 ||
-            Math.abs(next.k - start.k) > 0.005
-          ) {
-            draggedRef.current = true;
-          }
+        const start = gestureStartRef.current;
+        if (
+          Math.abs(next.x - start.x) > 4 ||
+          Math.abs(next.k - start.k) > 0.005
+        ) {
+          draggedRef.current = true;
         }
 
-        setTransform(next);
-      });
+        // Reines SCHIEBEN geht sofort ans DOM — der Zoom ist unverändert, die
+        // neue Verschiebung passt also zum bereits gezeichneten Bild. Beim
+        // Zoomen schreibt der Durchgang beides gemeinsam (siehe Layout-Effekt).
+        if (next.k === renderedRef.current.k) paintContent(next.x);
+
+        // Gezeichnet wird höchstens einmal je Bild — nicht einmal je Ereignis.
+        scheduleFrame();
+
+        /*
+         * Das Layout wartet, bis die Geste steht. Eine Ausnahme: Beim
+         * HERAUSzoomen rücken Pillen, die für mehr Platz gefasst wurden,
+         * zusammen — dagegen die Reißleine aus `PLAN_SHRINK_TOLERANCE`.
+         */
+        if (next.k < planKRef.current / PLAN_SHRINK_TOLERANCE) settlePlan();
+        else scheduleSettle();
+      })
+      // Am Ende jeder Fahrt — von Hand oder programmatisch — wird gefasst.
+      .on("end", settlePlan);
 
     zoomRef.current = behavior;
     selection.call(behavior);
 
     return () => {
+      node.removeEventListener("wheel", onWheel, { capture: true });
       selection.on(".zoom", null);
       zoomRef.current = null;
     };
-  }, [translateRange]);
+  }, [translateRange, scheduleFrame, scheduleSettle, settlePlan, paintContent]);
 
   // Grenzen nachziehen, sobald sich Größe oder Datenbestand ändern.
   useEffect(() => {
@@ -454,6 +729,14 @@ export default function Timeline({
 
   /* ----------------------------------------------- Programmatische Fahrten */
 
+  /**
+   * Wer „Bewegung reduzieren" eingestellt hat, bekommt das Ziel gesetzt statt
+   * angeflogen. Der Kameraflug erklärt etwas — aber nicht um jeden Preis.
+   */
+  const calmMotion = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+
   const applyTransform = useCallback(
     (targetK: number, targetX: number, duration: number) => {
       const node = hostRef.current;
@@ -490,30 +773,50 @@ export default function Timeline({
     [width, baseScale, translateRange]
   );
 
-  /** Fliegt auf einen Zeitraum (z. B. einen Cluster). */
-  const flyToRange = useCallback(
-    (yearMin: number, yearMax: number, duration: number) => {
-      const wanted = Math.max((yearMax - yearMin) * 1.6, MIN_VISIBLE_YEARS);
-      const targetK = clamp(domainSpan / wanted, 1, maxScale);
-      const center = (yearMin + yearMax) / 2;
-      applyTransform(targetK, translationFor(center, targetK), duration);
-    },
-    [domainSpan, maxScale, applyTransform, translationFor]
-  );
-
-  /** Fliegt auf einen einzelnen Eintrag und hebt ihn danach kurz hervor. */
+  /**
+   * Fliegt auf einen einzelnen Eintrag und hebt ihn danach kurz hervor.
+   *
+   * Der Flug hat eine Aufgabe, und die heißt nicht „hinschwenken", sondern
+   * ZEIGEN, WO DER EINTRAG LIEGT. Dafür reicht ein bisschen näher nicht:
+   *
+   *   1. Grundmaß — der sichtbare Ausschnitt schrumpft auf FOCUS_SPAN_YEARS.
+   *      Damit trägt die Achse darunter Monatsstriche statt nur Jahreszahlen.
+   *   2. Steckt der Eintrag dort immer noch in einem „+N", geht es
+   *      stufenweise weiter hinein, bis er als eigene Karte oder Pille
+   *      dasteht (`scaleThatFrees`). In einem dichten Jahrgang ist genau
+   *      das der Unterschied zwischen „da irgendwo" und „da".
+   *   3. Wer schon näher dran war, wird nicht wieder herausgezogen.
+   */
   const flyToEntry = useCallback(
     (entry: Entry) => {
+      const context = clamp(domainSpan / FOCUS_SPAN_YEARS, 1, maxScale);
+      // Steht der Eintrag auch bei stärkstem Zoom nicht frei (mehrere Einträge
+      // am selben Datum), bleibt es beim Grundmaß — weiter hineinzuziehen
+      // brächte nichts als Leere.
+      const solo =
+        scaleThatFrees(entries, [entry.id], context, maxScale, planOptionsFor) ??
+        context;
       const targetK = clamp(
-        Math.max(transformRef.current.k, domainSpan / FOCUS_SPAN_YEARS),
+        Math.max(solo, transformRef.current.k),
         1,
         maxScale
       );
       const center = entryYearFraction(entry);
-      applyTransform(targetK, translationFor(center, targetK), FLY_DURATION);
+      applyTransform(
+        targetK,
+        translationFor(center, targetK),
+        calmMotion() ? 0 : FLY_DURATION
+      );
       setHighlightId(entry.id);
     },
-    [domainSpan, maxScale, applyTransform, translationFor]
+    [
+      entries,
+      domainSpan,
+      maxScale,
+      planOptionsFor,
+      applyTransform,
+      translationFor,
+    ]
   );
 
   // Anforderung von außen (neuer Eintrag per Realtime oder Zähler-Kreis)
@@ -554,20 +857,24 @@ export default function Timeline({
     const node = hostRef.current;
     const behavior = zoomRef.current;
     if (!node || !behavior) return;
-    select<HTMLDivElement, unknown>(node)
-      .transition()
-      .duration(250)
-      .call(behavior.scaleBy, factor);
+    const selection = select<HTMLDivElement, unknown>(node);
+    if (calmMotion()) {
+      behavior.scaleBy(selection, factor);
+      return;
+    }
+    selection.transition().duration(250).call(behavior.scaleBy, factor);
   }, []);
 
   const resetZoom = useCallback(() => {
     const node = hostRef.current;
     const behavior = zoomRef.current;
     if (!node || !behavior) return;
-    select<HTMLDivElement, unknown>(node)
-      .transition()
-      .duration(500)
-      .call(behavior.transform, zoomIdentity);
+    const selection = select<HTMLDivElement, unknown>(node);
+    if (calmMotion()) {
+      behavior.transform(selection, zoomIdentity);
+      return;
+    }
+    selection.transition().duration(500).call(behavior.transform, zoomIdentity);
   }, []);
 
   const handleSelect = useCallback((entry: Entry) => {
@@ -579,21 +886,42 @@ export default function Timeline({
   const handleCluster = useCallback(
     (cluster: EntryCluster) => {
       if (draggedRef.current) return;
-      const wanted = Math.max(
-        (cluster.yearMax - cluster.yearMin) * 1.6,
-        MIN_VISIBLE_YEARS
-      );
-      const targetK = clamp(domainSpan / wanted, 1, maxScale);
-      // Bringt Zoomen nichts mehr (schon am Anschlag oder identische Daten):
-      // dann direkt öffnen bzw. die Einträge auflisten.
-      if (targetK <= transformRef.current.k * 1.02) {
+
+      const oeffnen = () => {
         if (cluster.entries.length === 1) setSelected(cluster.entries[0]);
         else setClusterEntries(cluster.entries);
+      };
+
+      /*
+       * Ein „+N" ist eine Einladung: „hier steckt mehr, sieh nach". Die
+       * Antwort darauf ist der kleinste Zoom, bei dem das Bündel aufgeht —
+       * nicht der größtmögliche. Früher wurde aus der Zeitspanne des Bündels
+       * gerechnet; bei Einträgen mit demselben Datum ist die null, und der
+       * Klick schoss auf den Anschlag, wo dann dasselbe Bündel wieder stand.
+       *
+       * Jetzt wird probiert statt gerechnet: Löst sich das Bündel überhaupt
+       * nicht auf, liegen alle auf demselben Punkt der Achse — dann ist die
+       * Liste die ehrliche Antwort, nicht noch mehr Zoom.
+       */
+      const targetK = scaleThatFrees(
+        entries,
+        cluster.entries.map((e) => e.id),
+        clamp(transformRef.current.k, 1, maxScale),
+        maxScale,
+        planOptionsFor
+      );
+      if (targetK === null || targetK <= transformRef.current.k * 1.02) {
+        oeffnen();
         return;
       }
-      flyToRange(cluster.yearMin, cluster.yearMax, 600);
+      const center = (cluster.yearMin + cluster.yearMax) / 2;
+      applyTransform(
+        targetK,
+        translationFor(center, targetK),
+        calmMotion() ? 0 : 600
+      );
     },
-    [domainSpan, maxScale, flyToRange]
+    [entries, maxScale, planOptionsFor, applyTransform, translationFor]
   );
 
   const handleDeleted = useCallback(
@@ -617,10 +945,7 @@ export default function Timeline({
         <div
           ref={contentRef}
           className="absolute inset-y-0 left-0 will-change-transform"
-          style={{
-            width: contentWidth,
-            transform: `translate3d(${x}px,0,0)`,
-          }}
+          style={{ width: contentWidth }}
         >
           {layout && (
             <>
@@ -684,6 +1009,7 @@ export default function Timeline({
                   axisY={axisY}
                   highlighted={highlightId === placement.item.id}
                   enterDelay={enterDelayFor(entering, index)}
+                  voiceCount={voiceCount?.(placement.item.id)}
                   onSelect={handleSelect}
                 />
               ))}
@@ -823,6 +1149,8 @@ export default function Timeline({
       {selected && (
         <EntryDetailModal
           entry={selected}
+          voices={voicesFor?.(selected.id)}
+          onAddVoice={onAddVoice}
           onClose={() => setSelected(null)}
           onDeleted={handleDeleted}
         />

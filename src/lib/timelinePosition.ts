@@ -26,9 +26,12 @@
  *
  *   1. `planTimeline`     — Seite, Spur, Pillenbreite und Cluster-Zugehörigkeit.
  *                           Läuft auf einem GERASTERTEN Zoomfaktor
- *                           (`quantizeZoom`), also nur bei spürbaren Schritten.
+ *                           (`quantizeZoom`) — und erst, wenn die Geste steht
+ *                           (siehe `planK` in `Timeline.tsx`). Wer zoomt, soll
+ *                           die Bewegung sehen, nicht das Umräumen.
  *   2. `positionTimeline` — die tatsächlichen Pixel. Läuft stufenlos mit `k`,
- *                           damit jeder Marker exakt über seinem Datum sitzt.
+ *                           damit jeder Marker in JEDEM Bild exakt über seinem
+ *                           Datum sitzt, egal wie alt der Plan gerade ist.
  *
  * Drei Ränge
  * ----------
@@ -142,6 +145,19 @@ export function quantizeZoom(k: number): number {
   const step = Math.round(Math.log2(k) * LAYOUT_ZOOM_STEPS) / LAYOUT_ZOOM_STEPS;
   return Math.pow(2, step);
 }
+
+/**
+ * Wie weit darf der Plan beim HERAUSzoomen veralten, bevor er nachgezogen
+ * werden MUSS? Zwei Rasterstufen (≈ 26 %).
+ *
+ * Hintergrund: Der Plan wird nur gefasst, wenn die Geste steht (siehe
+ * `Timeline.tsx`) — sonst würde mitten im Zoomen umsortiert, und genau das
+ * sieht man als Ruck. Beim Hineinzoomen ist ein alter Plan harmlos: Die
+ * Elemente rücken nur weiter auseinander, es kann nichts kollidieren. Beim
+ * Herauszoomen ist es umgekehrt — die für mehr Platz gefassten Pillen rücken
+ * zusammen und würden sich irgendwann überlappen. Deshalb diese Reißleine.
+ */
+export const PLAN_SHRINK_TOLERANCE = Math.pow(2, 2 / LAYOUT_ZOOM_STEPS);
 
 /* ========================================================================== */
 /*  Maße (CSS-Pixel)                                                          */
@@ -1001,6 +1017,75 @@ export function planTimeline(
 }
 
 /* ========================================================================== */
+/*  Zielzoom für den Kameraflug                                               */
+/* ========================================================================== */
+
+/**
+ * So viele Rasterstufen weit darf nach oben gesucht werden — 30 Stufen sind
+ * gut das Zweiunddreißigfache. Das reicht vom Gesamtbild bis in einen einzelnen
+ * Monat und kostet im schlimmsten Fall dreißig Planungen; die fallen einmal
+ * pro Klick an, nicht pro Bild.
+ */
+const SOLO_STEPS = 30;
+
+/**
+ * Kleinster Zoomfaktor ab `from`, bei dem die genannten Einträge als EIGENE
+ * Karte oder Pille dastehen — also nicht mehr in einem „+N" stecken.
+ *
+ * Warum das nötig ist: Ein fester Zielzoom („acht Jahre zeigen") trifft mal zu
+ * weit, mal zu nah. In einem dichten Jahrgang steckt der Eintrag danach immer
+ * noch in einem Bündel, und der Kameraflug hätte sein Versprechen gebrochen —
+ * man sollte ja SEHEN, wo genau er liegt. Deshalb wird hier nicht gerechnet,
+ * sondern probiert: Der Plan wird stufenweise weiter hineingezoomt neu gefasst,
+ * bis die Einträge frei stehen.
+ *
+ * Drei Ausgänge:
+ *   · Alle frei      → der SPARSAMSTE Zoom, bei dem das gilt. Gerade so nah
+ *                      wie nötig, damit der Kontext ringsum erhalten bleibt.
+ *   · Nur mehr frei  → der sparsamste Zoom mit der größten Ausbeute. Ein
+ *                      Bündel darf sich auch in zwei Schritten öffnen.
+ *   · `null`         → Zoomen hilft nicht. Tragen mehrere Einträge dasselbe
+ *                      Datum, liegen sie auf demselben Punkt der Achse; kein
+ *                      Zoom der Welt trennt sie. Dann ist die Liste die
+ *                      ehrliche Antwort, nicht noch mehr Vergrößerung.
+ */
+export function scaleThatFrees(
+  entries: ReadonlyArray<Entry>,
+  ids: ReadonlyArray<string>,
+  from: number,
+  max: number,
+  optionsFor: (scale: number) => PlanOptions
+): number | null {
+  const wanted = new Set(ids);
+  const freeCount = (scale: number): number => {
+    const plan = planTimeline(entries, optionsFor(scale));
+    let count = 0;
+    for (const group of [plan.markers, plan.important, plan.milestones]) {
+      for (const placed of group) if (wanted.has(placed.item.id)) count++;
+    }
+    return count;
+  };
+
+  let bestScale: number | null = null;
+  let bestCount = -1;
+
+  for (let step = 0; step <= SOLO_STEPS; step++) {
+    const scale = Math.min(from * Math.pow(2, step / LAYOUT_ZOOM_STEPS), max);
+    const count = freeCount(scale);
+    if (count === wanted.size) return scale;
+    if (count > bestCount) {
+      bestCount = count;
+      bestScale = scale;
+    }
+    if (scale >= max) break;
+  }
+
+  // Nichts gewonnen: Schon bei `from` standen genauso viele frei wie überall
+  // sonst — dann bringt Hineinzoomen nur Leere.
+  return bestScale !== null && bestScale > from ? bestScale : null;
+}
+
+/* ========================================================================== */
 /*  Positionen (stufenloses k)                                                */
 /* ========================================================================== */
 
@@ -1052,7 +1137,7 @@ function positionAll(
   opts: PositionOptions,
   bands: TimelineBands
 ): LanePlacement<Entry>[] {
-  return items.map((assignment) => {
+  const placed = items.map((assignment) => {
     const width = assignment.width;
     const anchor = anchorMode === "center" ? width / 2 : anchorMode;
     const x = opts.toX(entryYearFraction(assignment.item));
@@ -1066,16 +1151,27 @@ function positionAll(
       offset: offsetFor(bands, assignment.side, kind, assignment.lane),
     };
   });
+  /*
+   * Von links nach rechts sortiert verlassen die Listen diese Funktion — der
+   * Plan liefert sie nach Rang gestaffelt, also durcheinander. Das kostet hier
+   * fast nichts und schenkt zwei Dinge: Die Zeichenfläche kann den sichtbaren
+   * Ausschnitt per Binärsuche greifen ({@link sliceVisible}), statt jedes Mal
+   * alles durchzugehen, und der gestaffelte Eingang läuft in Leserichtung
+   * durchs Bild statt in der Reihenfolge der Ränge.
+   */
+  return placed.sort((a, b) => a.left - b.left);
 }
 
 /**
  * Rechnet einen Plan in echte Pixel um. Nur diese Funktion läuft bei jedem
  * Zoom-Frame — sie sortiert und entscheidet nichts, sie misst nur.
  *
- * Der Plan stammt von einer leicht anderen Zoomstufe (`layoutScale`), deshalb
- * werden die Cluster-Fächer mit `ratio` mitskaliert. `ratio` liegt bauartbedingt
- * zwischen 0,94 und 1,06 — die Fächer bleiben also immer breiter als ein Badge
- * und können sich nicht überlappen.
+ * Der Plan stammt von einer anderen Zoomstufe (`layoutScale`), deshalb werden
+ * die Cluster-Fächer mit `ratio` mitskaliert — so bleibt jedes Badge über
+ * seiner Gruppe stehen, auch wenn der Plan gerade eine Weile älter ist als das
+ * Bild (während einer Geste ist er das absichtlich, siehe
+ * {@link PLAN_SHRINK_TOLERANCE}). Wird das Fach dabei schmaler als das Badge,
+ * setzt sich das Badge mittig hinein, statt aus dem Fach zu rutschen.
  */
 export function positionTimeline(
   plan: TimelinePlan,
@@ -1093,11 +1189,12 @@ export function positionTimeline(
     }
     const slotStart = cluster.slot * slotWidth;
     const wanted = sum / cluster.entries.length - CLUSTER_WIDTH / 2;
+    const lowest = slotStart + margin;
+    const highest = slotStart + slotWidth - CLUSTER_WIDTH - margin;
     const left = clampLeft(
-      Math.min(
-        Math.max(wanted, slotStart + margin),
-        slotStart + slotWidth - CLUSTER_WIDTH - margin
-      ),
+      highest > lowest
+        ? Math.min(Math.max(wanted, lowest), highest)
+        : (lowest + highest) / 2,
       CLUSTER_WIDTH,
       opts.contentWidth
     );
@@ -1119,6 +1216,49 @@ export function positionTimeline(
     milestone: bands.card.milestone,
     importantLayout: bands.card.important,
   };
+}
+
+/* ========================================================================== */
+/*  Sichtbarer Ausschnitt                                                     */
+/* ========================================================================== */
+
+/** Erster Index, dessen `left` mindestens `value` ist (Binärsuche). */
+function firstFrom(
+  items: ReadonlyArray<{ left: number }>,
+  value: number
+): number {
+  let low = 0;
+  let high = items.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (items[mid].left < value) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+/**
+ * Der Teil einer nach `left` sortierten Liste, der das Fenster [`from`, `to`]
+ * berührt.
+ *
+ * Statt bei jedem Bild die ganze Liste zu filtern, werden nur die beiden
+ * Ränder gesucht. Bei sechzehn Einträgen ist das Kosmetik — bei den paar
+ * hundert, die in ein paar Schuljahren zusammenkommen, ist es der Unterschied
+ * zwischen „läuft" und „hakt".
+ *
+ * `maxWidth` ist die größte vorkommende Elementbreite: Ein Element, das links
+ * vor dem Fenster beginnt, kann noch hineinragen. Lieber ein paar Elemente zu
+ * viel zeichnen als eines zu wenig — der Puffer des Fensters fängt das ohnehin.
+ */
+export function sliceVisible<T extends { left: number }>(
+  items: ReadonlyArray<T>,
+  from: number,
+  to: number,
+  maxWidth: number
+): T[] {
+  const start = firstFrom(items, from - maxWidth);
+  const end = firstFrom(items, to + 1);
+  return items.slice(start, end);
 }
 
 /* ========================================================================== */
@@ -1144,6 +1284,16 @@ function shortMonth(month: number): string {
  * Adaptive Achsenbeschriftung. Je mehr Pixel ein Jahr breit ist, desto feiner
  * wird das Raster: 20er-Schritte → Dekaden → 5 Jahre → Jahre → Quartale → Monate.
  * Erzeugt werden nur Ticks im übergebenen Fenster (Sichtbereich + Puffer).
+ *
+ * Die Schwellen sind bewusst großzügiger als früher (Jahre ab 56 statt 46 px,
+ * Monate ab 58 statt 40 px). Zwei Gründe, und beide zählen:
+ *
+ *   Lesbarkeit  „2021 2022 2023 2024 …" im 46-Pixel-Abstand ist eine Zahlenwand.
+ *               Mit Luft dazwischen liest man die Achse, statt sie zu entziffern.
+ *   Ruhe        Jeder Tick ist beim Zoomen ein Element, das in JEDEM Bild neu
+ *               gesetzt werden muss. In der dichtesten Stufe waren das über
+ *               160 Stück — mehr als alle Einträge zusammen. Weniger Ticks
+ *               heißt hier ganz direkt: flüssigeres Zoomen.
  */
 export function buildAxisTicks(
   pxPerYear: number,
@@ -1154,10 +1304,10 @@ export function buildAxisTicks(
   if (!Number.isFinite(fromYear) || !Number.isFinite(toYear)) return [];
 
   const yearStep =
-    pxPerYear >= 46 ? 1 : pxPerYear >= 14 ? 5 : pxPerYear >= 6 ? 10 : 20;
+    pxPerYear >= 56 ? 1 : pxPerYear >= 16 ? 5 : pxPerYear >= 7 ? 10 : 20;
   const pxPerMonth = pxPerYear / 12;
-  const monthStep = pxPerMonth >= 40 ? 1 : pxPerMonth >= 16 ? 3 : 0;
-  const longMonthLabels = pxPerMonth >= 92;
+  const monthStep = pxPerMonth >= 58 ? 1 : pxPerMonth >= 20 ? 3 : 0;
+  const longMonthLabels = pxPerMonth >= 100;
 
   const first = Math.floor(fromYear);
   const last = Math.ceil(toYear);

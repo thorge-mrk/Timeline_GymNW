@@ -345,6 +345,9 @@ export default function Home() {
             onEntryDeleted={handleRemove}
             onOverlayChange={setOverlayOpen}
             filterKey={`${filter.category}:${filter.className ?? ""}`}
+            voiceCount={voiceCount}
+            voicesFor={voiceIndex.forEntry}
+            onAddVoice={isContributor ? goAddVoice : undefined}
             emptyHint={
               filtered.length === 0
                 ? "Zu diesem Filter gibt es noch keine Einträge."
