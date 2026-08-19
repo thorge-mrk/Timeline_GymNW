@@ -218,9 +218,8 @@ export default function DatenschutzPage() {
             bestätigt die einreichende Person per Checkbox „Ich stimme zu“, dass
             sie mit der Speicherung und der weltweiten öffentlichen Anzeige
             dieser Angaben einverstanden ist und die Nutzungsbedingungen
-            akzeptiert (Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO); dieses
-            Einverständnis wird beim Absenden technisch mit Zeitstempel
-            dokumentiert. Für Vorname, Klasse und Erinnerungstext reicht diese
+            akzeptiert (Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO). Für
+            Vorname, Klasse und Erinnerungstext reicht diese
             eigene Bestätigung aus; eine gesonderte Einwilligung der
             Erziehungsberechtigten ist dafür nicht erforderlich.
           </p>
