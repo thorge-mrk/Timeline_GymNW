@@ -399,6 +399,68 @@
 }
 
 /* ========================================================================== */
+/*  Die übrigen Themen — Knopf und Liste                                      */
+/* ========================================================================== */
+
+/*
+ * Was auf einem Handy nicht mehr lesbar in die Wolke passt, steht hier.
+ *
+ * `touch-action` ist der Grund, warum diese Regel überhaupt existiert: Die
+ * Bühne darüber hat `touch-action: none`, sonst nähme der Browser Wischen und
+ * Kneifen für sich. In dieser Liste wird aber gelesen und gescrollt — also
+ * bekommt sie das senkrechte Wischen zurück, und `overscroll-behavior`
+ * verhindert, dass der Schwung am Ende der Liste an die Seite darunter
+ * durchschlägt.
+ */
+.mcf-rest {
+  max-height: min(52vh, 22rem);
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  animation: mcf-rest-up 220ms var(--ease-drawer) both;
+}
+
+@keyframes mcf-rest-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mcf-rest-item {
+  transition:
+    background-color 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mcf-rest-item:hover {
+    background-color: var(--color-paper-sunk);
+  }
+}
+
+.mcf-rest-item:active {
+  transform: scale(0.985);
+  transition-duration: 110ms;
+}
+
+/*
+ * Der Pfeil zeigt dorthin, wo die Liste aufgeht: nach OBEN, solange sie zu
+ * ist, nach unten (also „wieder weg damit"), solange sie steht.
+ */
+.mcf-rest-arrow {
+  transform: rotate(180deg);
+  transition: transform 200ms var(--ease-out-strong);
+}
+
+.mcf-rest-arrow[data-open] {
+  transform: rotate(0deg);
+}
+
+/* ========================================================================== */
 /*  Das Stimmen-Panel                                                         */
 /* ========================================================================== */
 
@@ -490,7 +552,8 @@
   .mcf-word,
   .mcf-root[data-state="closing"] .mcf-word,
   .mcf-float,
-  .mcf-panel {
+  .mcf-panel,
+  .mcf-rest {
     animation: none;
   }
 
@@ -498,6 +561,7 @@
   .mcf-word:active .mcf-ink,
   .mcf-word[data-selected] .mcf-ink,
   .mcf-x:active,
+  .mcf-rest-item:active,
   .mc-toggle:hover .mc-grow,
   .mc-toggle:active .mc-grow {
     transform: none;

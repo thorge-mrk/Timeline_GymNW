@@ -24,8 +24,31 @@ interface MemoryCloudProps {
   onVoicesChanged?: (entryId: string) => void;
 }
 
-/** Ab hier wird der Titel gekürzt. Der volle Text bleibt in `title` und `aria-label`. */
-const MAX_CHARS = 30;
+/**
+ * Bis hierher steht ein Titel ganz da. Was länger ist, wird auf sein
+ * Schlüsselwort gebracht — nicht abgeschnitten.
+ */
+const FULL_CHARS = 18;
+
+/** So lang darf das Schlüsselwort höchstens werden. */
+const KEY_CHARS = 16;
+
+/**
+ * Wörter, die für sich genommen nichts erinnern.
+ *
+ * Artikel, Präpositionen, Hilfsverben: „Unterricht BEI Herrn Piernitzki" —
+ * das „bei" trägt nichts, das „Unterricht" trägt alles. Bewusst kurz
+ * gehalten und ohne Vollständigkeitsanspruch; sie muss nur die häufigsten
+ * Anfänge deutscher Erinnerungstitel abräumen.
+ */
+const FILLER = new Set([
+  "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem",
+  "einer", "eines", "und", "oder", "aber", "mit", "von", "vom", "zu", "zum",
+  "zur", "in", "im", "ins", "an", "am", "ans", "auf", "aus", "bei", "beim",
+  "für", "über", "unter", "nach", "vor", "als", "wie", "dass", "ist", "sind",
+  "war", "waren", "hat", "haben", "sich", "so", "mein", "meine", "meiner",
+  "unser", "unsere", "unserer", "sein", "seine", "ihr", "ihre", "es", "man",
+]);
 
 /** So viele Themen zeigt das Band als Vorgeschmack. */
 const PEEK_COUNT = 3;
@@ -84,20 +107,50 @@ const CURVE = 1.4;
  */
 const MAX_WORDS = 60;
 
-/**
- * „Berlinfahrt, 12 Klasse und Coronazeiten“ ist eine schöne Erinnerung und ein
- * schlechtes Wort für eine Wolke. Gekürzt wird möglichst an einer Wortgrenze,
- * damit kein Wortfetzen stehen bleibt; verloren geht nichts — der volle Titel
- * hängt am `title`-Attribut und am `aria-label`.
- */
-function shorten(title: string): string {
-  const text = title.trim();
-  if (text.length <= MAX_CHARS) return text;
+/** Satzzeichen weg, die an einem einzeln stehenden Wort nichts zu suchen haben. */
+function bare(word: string): string {
+  return word.replace(/^[„“"'(\[]+/, "").replace(/[\s.,;:!?/–—-]+$/, "");
+}
 
-  const cut = text.slice(0, MAX_CHARS);
-  const space = cut.lastIndexOf(" ");
-  const head = space > MAX_CHARS * 0.55 ? cut.slice(0, space) : cut;
-  return `${head.replace(/[\s.,;:!?/–-]+$/, "")}…`;
+/**
+ * Das Schlüsselwort eines Titels.
+ *
+ * „Unterricht bei Herrn Piernitzki und Frau Lösch" stand vorher als
+ * „Unterricht bei Herrn…" in der Wolke. Drei Punkte sind in einer Wortwolke
+ * aber das Gegenteil dessen, was sie sein soll: Sie versprechen Text, den es
+ * nicht gibt, und sie machen aus einem Wort einen angefangenen Satz. Also
+ * steht dort jetzt „Unterricht" — ein Wort, das für sich lesbar ist.
+ *
+ * Gesucht wird das erste inhaltstragende Wort (Artikel und Präpositionen
+ * werden übersprungen), und wenn danach noch Platz im Budget ist, kommt das
+ * zweite dazu: „beste Klasse", nicht nur „beste".
+ *
+ * GEKÜRZT WIRD NUR DIE ANZEIGE. Der volle Titel steht unverändert im
+ * `title`-Attribut, im `aria-label` und im Stimmen-Panel — er gehört den
+ * Menschen, die ihn geschrieben haben.
+ */
+function keyword(title: string): string {
+  const text = title.trim().replace(/\s+/g, " ");
+  if (text.length <= FULL_CHARS) return text;
+
+  const parts = text.split(" ").map(bare).filter(Boolean);
+  if (!parts.length) return text.slice(0, KEY_CHARS);
+
+  // Vorne die Füllwörter abräumen — aber nie alles: Besteht ein Titel nur aus
+  // ihnen, ist ein Füllwort immer noch besser als gar nichts.
+  let at = 0;
+  while (at < parts.length - 1 && FILLER.has(parts[at].toLowerCase())) at++;
+
+  let head = parts[at];
+  const next = parts[at + 1];
+  if (
+    next &&
+    !FILLER.has(next.toLowerCase()) &&
+    head.length + 1 + next.length <= KEY_CHARS
+  ) {
+    head = `${head} ${next}`;
+  }
+  return head;
 }
 
 /**
@@ -145,7 +198,7 @@ export default function MemoryCloud({
       entry,
       memories: Math.max(1, voiceCount(entry.id) + 1),
       weight: 0,
-      label: shorten(entry.title),
+      label: keyword(entry.title),
     }));
 
     if (!counted.length) return counted;
