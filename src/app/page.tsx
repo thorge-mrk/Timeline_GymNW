@@ -118,6 +118,13 @@ export default function Home() {
   /** Aus der Wolke geöffnetes Thema — der Zeitstrahl hat sein eigenes Fenster. */
   const [cloudEntry, setCloudEntry] = useState<Entry | null>(null);
 
+  /*
+   * Liegt irgendetwas über dem Zeitstrahl? Dann ruhen Zähler-Kreis und
+   * Selbstlauf. Die offene Wolke gehört ausdrücklich dazu: Wer darin stöbert,
+   * soll nicht merken, dass hinter ihm die Kamera weiterfliegt.
+   */
+  const overlayVisible = overlayOpen || cloudEntry !== null || cloudOpen;
+
   /** Immer der aktuelle Stand der Schlange — für den Selbstlauf weiter unten. */
   const pendingRef = useRef<Entry[]>(pending);
   pendingRef.current = pending;
@@ -241,7 +248,7 @@ export default function Home() {
    * Wer gerade liest, will nicht weggeflogen werden.
    */
   useEffect(() => {
-    if (pending.length === 0 || overlayOpen) return;
+    if (pending.length === 0 || overlayVisible) return;
     const timer = window.setInterval(() => {
       if (Date.now() - lastInteractionRef.current < IDLE_BEFORE_FLIGHT_MS) {
         return;
@@ -251,7 +258,7 @@ export default function Home() {
       if (next) handleJump(next);
     }, IDLE_CHECK_MS);
     return () => window.clearInterval(timer);
-  }, [pending.length, overlayOpen, handleJump]);
+  }, [pending.length, overlayVisible, handleJump]);
 
   /*
    * Live-Übertragung — nur, wenn sie eingeschaltet ist. Ist sie aus, wird gar
@@ -280,8 +287,6 @@ export default function Home() {
   }, []);
 
   /** Ein Fenster aus der Wolke verdeckt den Zeitstrahl genauso wie eins vom Strahl. */
-  const overlayVisible = overlayOpen || cloudEntry !== null;
-
   /** Zu einem Thema dazuschreiben — der Weg führt ins Formular. */
   const goAddVoice = useCallback(
     (entry: Entry) => router.push(`/eintragen/?ergaenzen=${entry.id}`),
@@ -404,7 +409,9 @@ export default function Home() {
       <MemoryCloud
         entries={filteredUndated}
         voiceCount={voiceCount}
+        voicesFor={voiceIndex.forEntry}
         onOpen={setCloudEntry}
+        onAddVoice={isContributor ? goAddVoice : undefined}
         open={cloudOpen}
         onOpenChange={setCloudOpen}
       />
