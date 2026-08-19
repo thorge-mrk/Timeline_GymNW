@@ -75,30 +75,55 @@ export interface CloudLayout {
   fontScale: number;
 }
 
-/** Misst die Breite eines Textes in einer bestimmten Schriftgröße. */
-export type Measure = (text: string, size: number) => number;
+/**
+ * Misst die Breite eines Textes in einer bestimmten Schriftgröße UND einem
+ * bestimmten Schriftgewicht.
+ *
+ * Das Gewicht muss mit, seit die Wörter nicht mehr alle fett stehen: Open Sans
+ * in 800 ist spürbar breiter als in 500. Wer mit einem festen Gewicht misst,
+ * bekommt für die großen Wörter zu schmale Kästen — und das größte Wort der
+ * Wolke, ausgerechnet, bekäme drei Auslassungspunkte verpasst.
+ */
+export type Measure = (text: string, size: number, weight: number) => number;
 
 /* -------------------------------------------------------------------------- */
 /*  Stellschrauben                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Mindestabstand zwischen zwei Wörtern. Er ist mit Absicht großzügig: Das
- * Schweben lenkt jedes Wort um höchstens `DRIFT_MAX * 1.3` aus, zwei Wörter
- * können sich also im schlimmsten Fall um gut 10 px annähern. Bei 16 px
- * Abstand bleibt immer Luft — Überschneidung ist damit nicht Glückssache,
- * sondern ausgeschlossen.
+ * Mindestabstand zwischen zwei Wörtern.
+ *
+ * Früher waren es 16 px — nötig, solange jedes Wort in einer Pille mit
+ * eigener Fläche und eigenem Rahmen saß: Zwei Flächen, die sich fast
+ * berühren, sehen aus wie ein Fehler. Reine Schrift verträgt viel weniger
+ * Luft; erst dadurch wird aus der Aufzählung eine Wolke.
+ *
+ * Die Rechnung dahinter: Das Schweben lenkt ein Wort um höchstens
+ * `DRIFT_MAX` (waagerecht) bzw. `DRIFT_MAX * 1.3` (senkrecht) aus. Zwei
+ * Wörter können sich also im schlimmsten Fall um 2 × 1.3 × 3 = 7.8 px
+ * annähern. Bei 9 px Abstand bleibt immer Luft — Überschneidung ist damit
+ * nicht Glückssache, sondern ausgeschlossen. Und weil die Buchstaben in
+ * ihrem Kasten ohnehin noch rund 0.17 em Rand haben (Zeilenkasten `LINE_BOX`
+ * gegen Versalhöhe), berühren sich Glyphen erst recht nie.
  */
-const GAP = 16;
+const GAP = 9;
 
 /** Größte Auslenkung des Schwebens in Weltpixeln. */
-const DRIFT_MAX = 4;
+const DRIFT_MAX = 3;
 
 /** Radiuszuwachs pro Umlauf der Suchspirale. Kleiner = dichter gepackt, langsamer. */
-const SPIRAL_TURN = 26;
+const SPIRAL_TURN = 18;
 
-/** So viele Plätze probiert ein Wort höchstens aus, bevor es aufgibt. */
-const MAX_TRIES = 4000;
+/**
+ * So viele Plätze probiert ein Wort höchstens aus, bevor es aufgibt.
+ *
+ * Mit der engeren Spirale sind das mehr Schritte als früher: Der Abtastwinkel
+ * wird weit außen auf 0.05 rad begrenzt, ein voller Weg von der Mitte bis zum
+ * Rand braucht damit gut fünftausend Schritte. Wer hier zu früh aufgibt,
+ * verliert kein Wort — die Anordnung fällt dann nur unnötig auf eine kleinere
+ * Schrift zurück.
+ */
+const MAX_TRIES = 9000;
 
 /**
  * Schriftstufen, die nacheinander versucht werden. Erst wenn auch die
@@ -157,9 +182,12 @@ function clamp(value: number, low: number, high: number): number {
 /**
  * Kleinste und größte Schrift für eine gegebene Fläche.
  *
- * Beides hängt an der Fläche selbst, nicht an festen Haltepunkten: Auf dem
- * Handy (390 px) ergibt das rund 16 → 41 px, auf dem Beamer (1920 px) rund
- * 24 → 72 px. Dieselbe Wolke, nur größer — und dazwischen stufenlos.
+ * Der Abstand zwischen beiden ist mit Absicht groß — das ist der Unterschied
+ * zwischen einer Liste und einer Wolke. Auf dem Handy (390 px) ergibt das
+ * rund 14 → 45 px (Faktor 3.2), auf dem Laptop (1440 px) rund 21 → 104 px
+ * (Faktor 5). Das lauteste Thema ist damit kein „etwas größeres" Wort mehr,
+ * sondern das Erste, was man sieht; die leisen treten weit zurück, bleiben
+ * aber über `MIN_SIZE` lesbar.
  *
  * Die Höhe geht mit ein (`h * 1.55`), weil ein sehr flaches Fenster sonst
  * riesige Wörter bekäme, die gar nicht übereinander passen.
@@ -167,25 +195,67 @@ function clamp(value: number, low: number, high: number): number {
 export function fontRange(w: number, h: number): { min: number; max: number } {
   const base = Math.min(w, h * 1.55);
   return {
-    min: clamp(base * 0.042, 15, 24),
-    max: clamp(base * 0.09, 28, 68),
+    min: clamp(base * 0.028, 14, 21),
+    max: clamp(base * 0.115, 34, 104),
   };
 }
 
 /**
  * Wie breit darf ein einzelnes Wort werden?
  *
- * Auf einem breiten Bildschirm wäre ein Wort über die halbe Breite ein
- * Banner und keine Wolke — dort ist knapp die Hälfte die Grenze. Ein
- * hochkantes Handy hat diese Wahl nicht: Dort ist die Wolke ohnehin eher eine
- * Säule, und ein Wort darf fast die volle Breite nehmen, sonst bliebe von
- * „Bläserklasse" nur „Bläser…" übrig.
+ * Großzügiger als zur Pillenzeit: Eine Fläche über die halbe Bildschirmbreite
+ * war ein Banner, blanke Schrift über dieselbe Breite ist einfach ein großes
+ * Wort. Und das größte Wort DARF jetzt groß sein — sonst rutscht es über
+ * `SHRINK_FLOOR` wieder auf Zweitplatz-Größe und die ganze Staffelung ist
+ * dahin. Ein hochkantes Handy hat diese Wahl ohnehin nicht: Dort ist die
+ * Wolke eher eine Säule, und ein Wort darf fast die volle Breite nehmen.
  */
 function wordShare(aspect: number): number {
-  if (aspect >= 1.2) return 0.46;
-  if (aspect >= 0.8) return 0.6;
-  return 0.8;
+  if (aspect >= 1.2) return 0.56;
+  if (aspect >= 0.8) return 0.68;
+  return 0.86;
 }
+
+/* -------------------------------------------------------------------------- */
+/*  Maße eines Wortes                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Höhe des Wortkastens in `em`.
+ *
+ * Kein Pillenmaß mehr (das waren 1.72 em für Polsterung und Rahmen), sondern
+ * knapp der natürliche Zeilenkasten. Die Buchstaben stehen darin mittig, es
+ * bleiben oben und unten rund 0.17 em Luft — genau die Reserve, die zusammen
+ * mit `GAP` dafür sorgt, dass sich schwebende Wörter nie berühren.
+ */
+const LINE_BOX = 1.34;
+
+/** Luft links und rechts in `em` — für den Fokusring und Glyphen-Überhang. */
+const SIDE_PAD = 0.1;
+
+/**
+ * Schriftgewicht der Wörter, leise → laut.
+ *
+ * Steht hier und nicht in der Komponente, weil die Anordnung es kennen MUSS:
+ * Breite hängt am Gewicht, und die Kästen müssen zu den Buchstaben passen.
+ * Open Sans ist eine variable Schrift, die Zwischenstufen gibt es wirklich.
+ */
+const WEIGHT_MIN = 500;
+const WEIGHT_MAX = 800;
+
+/** Schriftgewicht eines Wortes aus seiner Gewichtung (0 … 1). */
+export function wordFontWeight(weight: number): number {
+  return Math.round(WEIGHT_MIN + clamp(weight, 0, 1) * (WEIGHT_MAX - WEIGHT_MIN));
+}
+
+/** Gewicht der hochgestellten Zahl — sie bleibt immer gleich (siehe CSS). */
+const COUNT_WEIGHT = 600;
+
+/** Größe der hochgestellten Erinnerungszahl, als Anteil der Wortgröße. */
+const COUNT_SCALE = 0.42;
+
+/** Abstand zwischen Wort und hochgestellter Zahl in `em`. */
+const COUNT_GAP = 0.14;
 
 /* -------------------------------------------------------------------------- */
 /*  Belegungsraster                                                           */
@@ -258,7 +328,7 @@ class Field {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Kürzt ein Wort so weit, bis seine Pille in die erlaubte Breite passt.
+ * Kürzt ein Wort so weit, bis es in die erlaubte Breite passt.
  *
  * „Berlinfahrt, 12 Klasse und Coronazeiten" darf die Wolke nicht sprengen.
  * Gesucht wird per Halbierung die längste Fassung, die noch passt; verloren
@@ -268,37 +338,49 @@ class Field {
 function fitLabel(
   label: string,
   size: number,
+  weight: number,
   maxText: number,
   measure: Measure
 ): string {
-  if (maxText <= 0 || measure(label, size) <= maxText) return label;
+  if (maxText <= 0 || measure(label, size, weight) <= maxText) return label;
 
   let low = 0;
   let high = label.length;
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
     const trial = `${label.slice(0, mid).trimEnd()}…`;
-    if (measure(trial, size) <= maxText) low = mid;
+    if (measure(trial, size, weight) <= maxText) low = mid;
     else high = mid - 1;
   }
   if (low <= 0) return "…";
   return `${label.slice(0, low).replace(/[\s.,;:!?/–-]+$/, "")}…`;
 }
 
-/** Breite und Höhe der fertigen Pille. Alles in `em` gedacht, also mitwachsend. */
+/**
+ * Breite der hochgestellten Zahl samt Abstand — 0, wenn es nur eine
+ * Erinnerung gibt und die Zahl deshalb gar nicht erscheint.
+ */
+function countWidth(memories: number, size: number, measure: Measure): number {
+  if (memories <= 1) return 0;
+  return (
+    measure(String(memories), size * COUNT_SCALE, COUNT_WEIGHT) +
+    size * COUNT_GAP
+  );
+}
+
+/** Breite und Höhe des Wortkastens. Alles in `em` gedacht, also mitwachsend. */
 function boxSize(
   label: string,
   memories: number,
   size: number,
+  weight: number,
   measure: Measure
 ): { w: number; h: number } {
   const text =
-    measure(label, size) +
-    (memories > 1 ? measure(` · ${memories}`, size * 0.62) : 0);
+    measure(label, size, weight) + countWidth(memories, size, measure);
   return {
-    // 0.62em Polsterung links und rechts, dazu der Rahmen.
-    w: Math.ceil(text + size * 1.24 + 2),
-    h: Math.ceil(size * 1.72),
+    w: Math.ceil(text + size * SIDE_PAD * 2),
+    h: Math.ceil(size * LINE_BOX),
   };
 }
 
@@ -356,10 +438,11 @@ function pack(
      * Breite des Titels bei Schriftgröße 1.
      */
     const wanted = min + item.weight * (max - min);
-    const unit = measure(item.label, 100) / 100;
-    const unitCount =
-      item.memories > 1 ? measure(` · ${item.memories}`, 62) / 100 : 0;
-    const roomy = (maxWordWidth - 2) / (unit + unitCount + 1.24);
+    const weight = wordFontWeight(item.weight);
+    const unit =
+      (measure(item.label, 100, weight) + countWidth(item.memories, 100, measure)) /
+      100;
+    const roomy = maxWordWidth / (unit + SIDE_PAD * 2);
     // Abgerundet, nicht gerundet: Ein einziges Pixel zu viel würde den Kasten
     // über die erlaubte Breite schieben und den Titel doch wieder anschneiden.
     const size = Math.max(
@@ -369,21 +452,20 @@ function pack(
 
     // Was jetzt immer noch zu breit ist, wird gekürzt — der volle Titel bleibt
     // im `title` und im `aria-label` erhalten.
-    const extra =
-      item.memories > 1 ? measure(` · ${item.memories}`, size * 0.62) : 0;
     const label = fitLabel(
       item.label,
       size,
-      maxWordWidth - size * 1.24 - 2 - extra,
+      weight,
+      maxWordWidth - size * SIDE_PAD * 2 - countWidth(item.memories, size, measure),
       measure
     );
-    const { w, h } = boxSize(label, item.memories, size, measure);
+    const { w, h } = boxSize(label, item.memories, size, weight, measure);
     if (w + GAP > world.w || h + GAP > world.h) return null;
 
     const phase = spread(item.id, "dir") * Math.PI * 2;
     // Feinheit der Suche: große Wörter dürfen gröber abtasten, sie brauchen
     // ohnehin große Lücken.
-    const arc = Math.max(9, h * 0.4);
+    const arc = Math.max(7, h * 0.4);
 
     let placed: CloudBox | null = null;
     let t = 0;

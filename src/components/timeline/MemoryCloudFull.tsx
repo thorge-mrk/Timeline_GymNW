@@ -12,9 +12,14 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { categoryPillStyle } from "@/lib/categories";
+import { categoryById } from "@/lib/categories";
 import type { Entry, Voice } from "@/lib/types";
-import { layoutCloud, type CloudInput, type Measure } from "./cloudLayout";
+import {
+  layoutCloud,
+  wordFontWeight,
+  type CloudInput,
+  type Measure,
+} from "./cloudLayout";
 import VoicePanel from "./VoicePanel";
 import "./memoryCloud.css";
 
@@ -39,20 +44,51 @@ interface MemoryCloudFullProps {
   /** Den ganzen Eintrag im Detail-Fenster öffnen — schließt vorher die Wolke. */
   onOpenEntry: (entry: Entry) => void;
   onAddVoice?: (entry: Entry) => void;
+  /** Die Verwaltung hat eine Stimme geändert oder entfernt — Zähler nachladen. */
+  onVoicesChanged?: (entryId: string) => void;
   onClose: () => void;
   /** Bekommt den Fokus zurück, sobald die Vollansicht schließt. */
   returnFocus: RefObject<HTMLElement | null>;
 }
 
 /** Ausgang kürzer als der Eingang — Schließen darf nie warten. */
-const EXIT_MS = 170;
+const EXIT_MS = 250;
 
 /** Ab dieser Wegstrecke war es ein Schieben und kein Klick. */
 const DRAG_SLOP = 6;
 
-/** Staffelung des Einlaufens je Wort und ihre Obergrenze. */
-const STAGGER_MS = 26;
-const STAGGER_MAX_MS = 560;
+/**
+ * Staffelung des Aufziehens je Wort und ihre Obergrenze.
+ *
+ * Die Anordnung setzt von innen nach außen (`order` 0 ist das lauteste Thema,
+ * ganz in der Mitte). Multipliziert mit `order` läuft die Wolke damit von der
+ * Mitte nach außen auf — wie ein Atemzug, nicht wie eine Liste, die sich
+ * Zeile für Zeile füllt.
+ */
+const STAGGER_MS = 22;
+const STAGGER_MAX_MS = 460;
+
+/**
+ * Staffelung des Zusammenschrumpfens — RÜCKWÄRTS, von außen nach innen.
+ *
+ * Beim Schließen zieht sich die Wolke auf ihre Mitte zusammen: Der leise Rand
+ * geht zuerst, das lauteste Wort zuletzt. Deutlich kürzer getaktet als der
+ * Eingang, denn niemand wartet gern auf eine Verabschiedung; alles zusammen
+ * bleibt unter `EXIT_MS`.
+ */
+const EXIT_STAGGER_MS = 5;
+const EXIT_STAGGER_MAX_MS = 90;
+
+/**
+ * Deckkraft der Wörter, klein → groß.
+ *
+ * Bewusst ein SCHMALER Bereich. Weiter zurückgenommen sähen die kleinen
+ * Wörter zwar hübsch nach Nebel aus, aber die dunkelste Kategorienfarbe auf
+ * Papier fällt unter 0.88 unter das Kontrastverhältnis 4.5 : 1 — und ein Wort,
+ * das man nicht lesen kann, ist keine Erinnerung mehr. Das Zurücktreten
+ * leisten stattdessen Größe und Gewicht, die dafür keinen Preis haben.
+ */
+const FADE_MIN = 0.88;
 
 /**
  * Grenzen des Einpass-Zooms.
@@ -107,10 +143,10 @@ function makeMeasure(family: string, slack: number): Measure {
   if (!ctx) {
     // Ohne Canvas lieber großzügig schätzen: zu breit heißt nur mehr Luft,
     // zu schmal hieße Überschneidung.
-    return (text, size) => text.length * size * 0.58;
+    return (text, size) => text.length * size * 0.62;
   }
-  return (text, size) => {
-    ctx.font = `700 ${size}px ${family}`;
+  return (text, size, weight) => {
+    ctx.font = `${weight} ${size}px ${family}`;
     return ctx.measureText(text).width * slack;
   };
 }
@@ -124,14 +160,14 @@ function makeMeasure(family: string, slack: number): Measure {
  *              Rechteck gegen Rechteck geprüft, Streuung aus der Eintrags-id.
  *              Diese Datei legt das Ergebnis nur aus.
  *
- *   BEWEGUNG   drei ineinandergelegte Ebenen je Wort: außen das Hereinkommen
- *              (Deckkraft + Maßstab, gestaffelt von der Mitte nach außen),
- *              in der Mitte das endlose Schweben, innen die Pille mit Hover
- *              und Druck. Drei, weil auf einem Element immer nur EIN
- *              `transform` gleichzeitig laufen kann. Bewegt werden
- *              ausschließlich `transform` und `opacity` — nichts davon zwingt
- *              den Browser zu neuem Layout, die Wolke kann also stundenlang
- *              auf einem Beamer stehen.
+ *   BEWEGUNG   drei ineinandergelegte Ebenen je Wort: außen das Aufziehen und
+ *              Zusammenschrumpfen (Deckkraft + Maßstab, gestaffelt von der
+ *              Mitte nach außen und beim Schließen zurück), in der Mitte das
+ *              endlose Schweben, innen die Schrift mit Hover und Druck. Drei,
+ *              weil auf einem Element immer nur EIN `transform` gleichzeitig
+ *              laufen kann. Bewegt werden ausschließlich `transform` und
+ *              `opacity` — nichts davon zwingt den Browser zu neuem Layout,
+ *              die Wolke kann also stundenlang auf einem Beamer stehen.
  *
  *   GESTEN     Rad, Kneifen und Ziehen liegen als eigene Zuhörer auf dieser
  *              Ansicht. Der Zeitstrahl darunter hat sein eigenes d3-Zoom;
@@ -147,6 +183,7 @@ export default function MemoryCloudFull({
   voicesFor,
   onOpenEntry,
   onAddVoice,
+  onVoicesChanged,
   onClose,
   returnFocus,
 }: MemoryCloudFullProps) {
@@ -756,9 +793,19 @@ export default function MemoryCloudFull({
                     width: `${placed.box.w}px`,
                     height: `${placed.box.h}px`,
                     fontSize: `${placed.size}px`,
-                    animationDelay: `${Math.min(
+                    /*
+                     * Zwei Takte, nicht einer: Das Aufziehen läuft von der
+                     * Mitte nach außen, das Zusammenschrumpfen von außen nach
+                     * innen. Ein gemeinsamer `animation-delay` hätte beim
+                     * Schließen bis zu einer halben Sekunde Wartezeit bedeutet.
+                     */
+                    "--mcf-in-delay": `${Math.min(
                       placed.order * STAGGER_MS,
                       STAGGER_MAX_MS
+                    )}ms`,
+                    "--mcf-out-delay": `${Math.min(
+                      (layout.words.length - 1 - placed.order) * EXIT_STAGGER_MS,
+                      EXIT_STAGGER_MAX_MS
                     )}ms`,
                   } as CSSProperties
                 }
@@ -774,14 +821,47 @@ export default function MemoryCloudFull({
                     } as CSSProperties
                   }
                 >
+                  {/*
+                    Das Wort. Kein Hintergrund, kein Rahmen, kein Kästchen —
+                    nur Schrift auf Papier. Was ein Wort vom anderen
+                    unterscheidet, liefert die Schrift selbst: Kategorienfarbe
+                    (die dunkle `ink`-Variante, nicht die helle Fläche),
+                    Gewicht und Deckkraft. Alle drei kommen als Inline-Werte
+                    von hier, weil sie von den Daten abhängen; wie sie sich
+                    bewegen, steht in memoryCloud.css. Das Gewicht stammt aus
+                    `cloudLayout.ts` — dort MUSS es bekannt sein, weil ein
+                    fetteres Wort breiter ist und der Kasten sonst nicht passt.
+                  */}
                   <span
-                    className="mcf-pill"
-                    style={categoryPillStyle(word.entry.category)}
+                    className="mcf-ink"
+                    style={
+                      {
+                        color: categoryById(word.entry.category).ink,
+                        "--mcf-weight": wordFontWeight(word.weight),
+                        "--mcf-fade": (
+                          FADE_MIN +
+                          word.weight * (1 - FADE_MIN)
+                        ).toFixed(3),
+                      } as CSSProperties
+                    }
                   >
                     <span className="mcf-text">{placed.label}</span>
+                    {/*
+                      Die Erinnerungszahl — hochgestellt statt als „· 4"
+                      hinter dem Wort. Der Mittelpunkt machte aus jedem Wort
+                      einen halben Satz, und genau das darf eine Wortwolke
+                      nicht sein. Weglassen wollten wir die Zahl aber auch
+                      nicht: Die Größe sagt „viel" oder „wenig", die Zahl sagt
+                      „genau fünf" — und über dem Deckel `MEMORY_CAP` sagt sie
+                      als Einzige noch etwas, weil dort alle Wörter gleich groß
+                      sind. Auf 42 % verkleinert und halb durchsichtig ist sie
+                      eine Fußnote am Wort: da, wenn man hinsieht, und still,
+                      wenn man es nicht tut. Vorgelesen wird sie nicht doppelt —
+                      das `aria-label` des Knopfes sagt bereits „Pausen,
+                      5 Erinnerungen, öffnen".
+                    */}
                     {word.memories > 1 && (
                       <span aria-hidden="true" className="mcf-count tabular-nums">
-                        {" · "}
                         {word.memories}
                       </span>
                     )}
@@ -821,6 +901,7 @@ export default function MemoryCloudFull({
               onAddVoice={
                 onAddVoice ? () => onAddVoice(selectedWord.entry) : undefined
               }
+              onVoicesChanged={onVoicesChanged}
             />
           </div>
         )}

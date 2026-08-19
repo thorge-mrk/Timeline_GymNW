@@ -1,0 +1,120 @@
+/*
+ * Die Stimmen einer Erinnerung — und die leisen Griffe der Verwaltung daran.
+ *
+ * Eigener Präfix `vl-`; alles hier gehört zu VoiceList.tsx und zu niemandem
+ * sonst. Es steht nur, was Tailwind-Utilities nicht sauber ausdrücken können:
+ * Hover hinter `(hover: hover) and (pointer: fine)`, der Druck, das Daumenmaß
+ * und der ruhige Eingang der eingeblendeten Bereiche.
+ *
+ * Kurven (aus globals.css):
+ *   --ease-out-strong  Ein-/Ausgänge und kurze Reaktionen
+ */
+
+/* ========================================================================== */
+/*  „Bearbeiten“ und „Löschen“ an einer einzelnen Stimme                      */
+/* ========================================================================== */
+
+/*
+ * WARUM SO LEISE.
+ *
+ * Eine Stimme ist der Beitrag eines Menschen und kein Datensatz mit
+ * Werkzeugleiste. Im Ruhezustand haben die beiden Wörter deshalb genau das
+ * Gewicht der Namenszeile daneben — dieselbe Größe, dieselbe blasse Farbe,
+ * keine Fläche, kein Rahmen. Erst wer hinzeigt oder mit der Tastatur
+ * ankommt, bekommt Kontrast und eine Unterlage; erst dann sehen sie aus wie
+ * Knöpfe.
+ *
+ * Das Touchziel ist trotzdem 44 px hoch. Damit die Karte davon nicht
+ * aufgeht, holt der negative Außenabstand die zusätzliche Höhe wieder
+ * herein: Sichtbar bleibt eine Textzeile, anfassbar ist ein Daumenfeld.
+ */
+.vl-act {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding-inline: 0.5rem;
+  margin-block: -0.625rem;
+  border-radius: 10px;
+  color: var(--color-coal-faint);
+  cursor: pointer;
+  transition:
+    color 140ms var(--ease-out-strong),
+    background-color 140ms var(--ease-out-strong),
+    transform 140ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .vl-act:hover {
+    color: var(--color-coal);
+    background-color: var(--color-paper-card);
+  }
+
+  .vl-act--danger:hover {
+    color: var(--color-brick);
+  }
+}
+
+.vl-act:focus-visible {
+  color: var(--color-coal);
+  background-color: var(--color-paper-card);
+}
+
+.vl-act:active {
+  transform: scale(0.96);
+  transition-duration: 100ms;
+}
+
+.vl-act[disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ========================================================================== */
+/*  Die Stimme, während an ihr gearbeitet wird                                */
+/* ========================================================================== */
+
+/*
+ * Bearbeiten und Rückfrage heben die Karte vom eingesunkenen Papier auf die
+ * Kartenfarbe — dieselbe Bewegung wie überall auf der Seite, wenn etwas in
+ * den Vordergrund tritt. Beim Bearbeiten kommt ein feiner Fuchs-Rand dazu:
+ * genau eine Stimme ist gerade offen, und man sieht sofort, welche.
+ */
+.vl-open {
+  background-color: var(--color-paper-card);
+  box-shadow: inset 0 0 0 1px var(--color-paper-line);
+}
+
+.vl-open--edit {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-fox) 45%, var(--color-paper-line));
+}
+
+/* Ein kurzer Eingang, damit Formular und Rückfrage nicht aufspringen. */
+@keyframes vl-unfold {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.vl-unfold {
+  animation: vl-unfold 180ms var(--ease-out-strong) both;
+}
+
+/* ========================================================================== */
+/*  Reduzierte Bewegung                                                       */
+/* ========================================================================== */
+
+/*
+ * globals.css kürzt bereits alle Dauern. Hier fällt zusätzlich die
+ * Ortsveränderung weg — Farbe und Deckkraft bleiben, sie erklären etwas.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .vl-act:active {
+    transform: none;
+  }
+}

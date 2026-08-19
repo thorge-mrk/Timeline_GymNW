@@ -4,6 +4,7 @@ import { useEffect, useId, useRef } from "react";
 import RichText from "@/components/RichText";
 import { categoryById, categoryPillStyle } from "@/lib/categories";
 import type { Entry, Voice } from "@/lib/types";
+import VoiceList from "./VoiceList";
 import "./memoryCloud.css";
 
 interface VoicePanelProps {
@@ -17,6 +18,11 @@ interface VoicePanelProps {
   onOpenEntry: () => void;
   /** Nur gesetzt, wenn jemand angemeldet ist. */
   onAddVoice?: () => void;
+  /**
+   * Eine Stimme wurde geändert oder gelöscht (nur Verwaltung) — die Seite lädt
+   * die Stimmen dieses Themas dann neu.
+   */
+  onVoicesChanged?: (entryId: string) => void;
 }
 
 /**
@@ -47,6 +53,7 @@ export default function VoicePanel({
   onClose,
   onOpenEntry,
   onAddVoice,
+  onVoicesChanged,
 }: VoicePanelProps) {
   const titleId = useId();
   const rootRef = useRef<HTMLElement>(null);
@@ -62,14 +69,6 @@ export default function VoicePanel({
   useEffect(() => {
     rootRef.current?.focus();
   }, [entry.id]);
-
-  const attribution = (voice: Voice) =>
-    [
-      voice.author_name?.trim() || null,
-      voice.class_name?.trim() ? `Klasse ${voice.class_name.trim()}` : null,
-    ]
-      .filter(Boolean)
-      .join(", ");
 
   const meta = [
     entry.class_name ? `Klasse ${entry.class_name}` : null,
@@ -110,8 +109,9 @@ export default function VoicePanel({
             </h3>
 
             {/*
-              Die Zahl ausgeschrieben — in der Wolke steht nur „· 4", weil eine
-              Pille sonst zum Satz würde. Hier ist Platz für das ganze Wort.
+              Die Zahl ausgeschrieben — in der Wolke steht sie nur als
+              hochgestellte Ziffer am Wort, damit aus dem Wort kein Satz wird.
+              Hier ist Platz für das ganze Wort.
             */}
             <p className="mt-1 text-[12px] leading-5 text-coal-soft tabular-nums">
               {memories === 1 ? "1 Erinnerung" : `${memories} Erinnerungen`}
@@ -147,40 +147,25 @@ export default function VoicePanel({
 
         {voices.length > 0 ? (
           <section className={entry.description ? "mt-5" : ""}>
-            <h4 className="label mb-2.5">
-              {voices.length === 1
-                ? "Eine weitere Stimme"
-                : `${voices.length} weitere Stimmen`}
-            </h4>
-
             {/*
-              Wie im Detail-Fenster: ein Zitat, kein Kommentar. Farbiger Strich
-              in der Kategoriefarbe, der Text, darunter leise die Herkunft.
-              Der Text kommt als React-Kind ins Dokument, nie als HTML.
+              Dieselbe Liste wie im Detail-Fenster (VoiceList) — nur enger
+              gesetzt, weil das Panel schmal ist. Dort steckt auch das
+              Bearbeiten und Löschen einzelner Stimmen, das nur die Verwaltung
+              zu sehen bekommt.
             */}
-            <ul className="flex flex-col gap-2.5">
-              {voices.map((voice) => {
-                const from = attribution(voice);
-                return (
-                  <li
-                    key={voice.id}
-                    className="relative rounded-xl bg-paper-sunk py-3 pr-3.5 pl-4"
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-y-2.5 left-0 w-[3px] rounded-full"
-                      style={{ backgroundColor: category.color, opacity: 0.5 }}
-                    />
-                    <p className="text-[14px] leading-relaxed whitespace-pre-line text-coal">
-                      {voice.body}
-                    </p>
-                    {from && (
-                      <p className="mt-1.5 text-[11px] text-coal-faint">— {from}</p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <VoiceList
+              voices={voices}
+              accent={category.color}
+              dense
+              onVoicesChanged={onVoicesChanged}
+              heading={(count) => (
+                <h4 className="label mb-2.5">
+                  {count === 1
+                    ? "Eine weitere Stimme"
+                    : `${count} weitere Stimmen`}
+                </h4>
+              )}
+            />
           </section>
         ) : (
           <p

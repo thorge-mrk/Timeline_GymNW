@@ -146,6 +146,8 @@ interface TimelineProps {
   voicesFor?: (entryId: string) => Voice[];
   /** Nur gesetzt, wenn jemand angemeldet ist: „auch meine Erinnerung dazu“. */
   onAddVoice?: (entry: Entry) => void;
+  /** Die Verwaltung hat eine Stimme geändert oder entfernt — Zähler nachladen. */
+  onVoicesChanged?: (entryId: string) => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -174,6 +176,7 @@ export default function Timeline({
   voiceCount,
   voicesFor,
   onAddVoice,
+  onVoicesChanged,
 }: TimelineProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1151,6 +1154,7 @@ export default function Timeline({
           entry={selected}
           voices={voicesFor?.(selected.id)}
           onAddVoice={onAddVoice}
+          onVoicesChanged={onVoicesChanged}
           onClose={() => setSelected(null)}
           onDeleted={handleDeleted}
         />

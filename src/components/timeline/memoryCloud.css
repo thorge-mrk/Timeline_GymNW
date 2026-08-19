@@ -3,9 +3,9 @@
  *
  * Eigene Präfixe; alles hier gehört zu MemoryCloud.tsx, MemoryCloudFull.tsx
  * und VoicePanel.tsx und zu niemandem sonst. Es steht nur, was Tailwind-
- * Utilities nicht sauber ausdrücken können: die Schwebe- und Einlauf-
- * Bewegung, die Pillenform als Rechnung in `em`, Hover hinter
- * `(hover: hover) and (pointer: fine)` und der Druck.
+ * Utilities nicht sauber ausdrücken können: die Schwebe-, Aufzieh- und
+ * Schrumpf-Bewegung, die hochgestellte Zahl als Rechnung in `em`, Hover
+ * hinter `(hover: hover) and (pointer: fine)` und der Druck.
  *
  * Kurven (aus globals.css):
  *   --ease-out-strong  Ein-/Ausgänge und kurze Reaktionen
@@ -77,8 +77,13 @@
   animation: mcf-veil-in 220ms var(--ease-out-strong) both;
 }
 
+/*
+ * Der Schleier wartet 80 ms, bevor er geht. Genau so lange braucht die Wolke,
+ * um sichtbar zusammenzuschrumpfen — würde das Papier sofort mitverblassen,
+ * sähe man vom Schrumpfen nichts. Zusammen bleibt der Ausgang bei `EXIT_MS`.
+ */
 .mcf-root[data-state="closing"] {
-  animation: mcf-veil-out 170ms var(--ease-out-strong) both;
+  animation: mcf-veil-out 170ms var(--ease-out-strong) 80ms both;
 }
 
 @keyframes mcf-veil-in {
@@ -157,28 +162,34 @@
  * eine Bewegung auf demselben Element ginge nicht, die letzte gewänne:
  *
  *   .mcf-word   der Kasten (Ort und Größe kommen aus der Anordnung).
- *               Hier läuft das EINMALIGE Hereinkommen.
+ *               Hier läuft das EINMALIGE Aufziehen bzw. Zusammenschrumpfen.
  *   .mcf-float  das endlose Schweben.
- *   .mcf-pill   die sichtbare Pille. Hier reagiert Hover und Druck.
+ *   .mcf-ink    das sichtbare Wort. Hier reagiert Hover, Fokus und Druck.
  */
 .mcf-word {
   border: 0;
   padding: 0;
   background: none;
-  border-radius: 999px;
-  animation: mcf-arrive 440ms var(--ease-out-strong) both;
+  animation: mcf-bloom 480ms var(--ease-out-strong) both;
+  animation-delay: var(--mcf-in-delay, 0ms);
 }
 
 /*
- * Hereinkommen: aus 86 % auf 100 %, nicht aus dem Nichts — nichts in der
- * echten Welt erscheint aus einem Punkt. Die Staffelung setzt die Komponente
- * je Wort (`animation-delay`), und weil die Anordnung von innen nach außen
- * setzt, läuft die Wolke von der Mitte her auf.
+ * AUFZIEHEN. Aus fast nichts (22 %) auf volle Größe — die Wörter kommen aus
+ * dem Papier heraus, statt als fertige Kästchen einzublenden. Das war die
+ * ausdrückliche Bitte der Schule („wenn man kann schrumpfen machen"), und es
+ * ist auch das, was eine Wolke von einer Liste unterscheidet: Eine Liste
+ * erscheint, eine Wolke zieht auf.
+ *
+ * Bewusst OHNE Überschwingen. Ein Wort, das kurz auf 103 % wächst, ist bei
+ * einem 500 px breiten Wort fünfzehn Pixel breiter als geplant — mehr als der
+ * Sicherheitsabstand `GAP` der Anordnung. Die kräftige Ausklingkurve
+ * (`--ease-out-strong`) trägt den Schwung auch ohne.
  */
-@keyframes mcf-arrive {
+@keyframes mcf-bloom {
   from {
     opacity: 0;
-    transform: scale(0.86);
+    transform: scale(0.22);
   }
   to {
     opacity: 1;
@@ -187,16 +198,37 @@
 }
 
 /*
+ * ZUSAMMENSCHRUMPFEN. Der Gegenweg, nur schneller und rückwärts gestaffelt:
+ * Der leise Rand geht zuerst, das lauteste Wort zuletzt — die Wolke zieht
+ * sich auf ihre Mitte zusammen und ist weg.
+ */
+.mcf-root[data-state="closing"] .mcf-word {
+  animation: mcf-collapse 160ms var(--ease-in-out-strong) both;
+  animation-delay: var(--mcf-out-delay, 0ms);
+}
+
+@keyframes mcf-collapse {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.16);
+  }
+}
+
+/*
  * Das Schweben. Vier Stationen auf einer kleinen, geschlossenen Schleife —
  * kein Hin und Her, sondern ein Treiben. Die Auslenkung liegt bei höchstens
- * vier bis fünf Pixeln (`--mcf-dx`, `--mcf-dy` kommen aus der Eintrags-id),
+ * drei bis vier Pixeln (`--mcf-dx`, `--mcf-dy` kommen aus der Eintrags-id),
  * die Umlaufzeit zwischen elf und zwanzig Sekunden, und jedes Wort startet
  * über einen negativen `animation-delay` an einer anderen Stelle der
  * Schleife. Deshalb wippt nichts im Gleichtakt: Staub im Sonnenlicht, kein
  * Bildschirmschoner.
  *
  * Die Auslenkung ist mit Absicht kleiner als der Sicherheitsabstand der
- * Anordnung (16 px) — zwei Wörter können sich also nie berühren, egal wie
+ * Anordnung (9 px) — zwei Wörter können sich also nie berühren, egal wie
  * lange die Wolke läuft.
  */
 .mcf-float {
@@ -231,73 +263,139 @@
 }
 
 /*
- * Die Pille. Alles an ihr ist in `em` bemessen, damit ein großes Wort auch
- * großzügig gepolstert ist und ein kleines knapp — sonst sehen die kleinen
- * aufgebläht aus. Breite und Höhe kommen von außen; was nicht hineinpasst,
- * wird mit Auslassungspunkten gekürzt (der volle Titel steht im `title`).
+ * DAS WORT. Keine Fläche, kein Rahmen, kein Schatten — die Schule wollte
+ * „wirklich echte Wörter, keine Pillen", und genau das steht hier: Tinte auf
+ * Papier. Unterschieden werden die Wörter über das, was Schrift ohnehin
+ * hergibt und was diese Datei NICHT festlegt, weil es an den Daten hängt:
+ *
+ *   color            Kategorienfarbe (die dunkle `ink`-Variante)
+ *   --mcf-weight     500 (leise) … 800 (laut)
+ *   --mcf-fade       0.88 (leise) … 1 (laut)
+ *
+ * Alles in `em`, damit die hochgestellte Zahl und die seitliche Luft mit der
+ * Wortgröße mitwachsen. Die 0.1 em links und rechts sind dasselbe `SIDE_PAD`,
+ * mit dem `cloudLayout.ts` rechnet — sonst stünde der Kasten woanders als
+ * die Buchstaben.
  */
-.mcf-pill {
+.mcf-ink {
   display: flex;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  padding: 0 0.62em;
-  border-width: 1px;
-  border-style: solid;
-  border-radius: 999px;
-  font-weight: 700;
+  padding: 0 0.1em;
+  font-weight: var(--mcf-weight, 700);
   line-height: 1;
   white-space: nowrap;
+  opacity: var(--mcf-fade, 1);
   transition:
-    transform 170ms var(--ease-out-strong),
-    box-shadow 170ms var(--ease-out-strong);
+    transform 180ms var(--ease-out-strong),
+    opacity 180ms var(--ease-out-strong);
 }
 
+/*
+ * `line-height: 1.34` ist KEIN Geschmackswert, sondern `LINE_BOX` aus
+ * cloudLayout.ts: Der Textkasten ist damit exakt so hoch wie der Kasten, mit
+ * dem die Anordnung rechnet. Die Grundlinie liegt dabei auf dasselbe Pixel wie
+ * bei `line-height: 1` mittig — aber unter ihr bleibt Platz, und den braucht
+ * die Unterstreichung des offenen Wortes: Bei `line-height: 1` fiele sie aus
+ * dem Kasten und `overflow: hidden` schnitte sie einfach ab.
+ */
 .mcf-text {
+  min-width: 0;
   overflow: hidden;
+  line-height: 1.34;
   text-overflow: ellipsis;
 }
 
-/* Die Zahl gehört zum Wort, nicht daneben — also wächst sie mit. */
+/*
+ * Die Erinnerungszahl als Fußnote am Wort.
+ *
+ * `align-self: flex-start` statt eines negativen Versatzes: Die Ziffer sitzt
+ * damit am oberen Rand des Wortkastens, also knapp über der Versalhöhe — und
+ * bleibt VOLLSTÄNDIG INNERHALB des Kastens, mit dem die Anordnung rechnet.
+ * Ein herausragendes `position: relative; top: -0.5em` sähe genauso aus,
+ * könnte aber ins Nachbarwort ragen, ohne dass die Abstandsprüfung es merkt.
+ */
 .mcf-count {
   flex-shrink: 0;
-  font-size: 0.62em;
-  opacity: 0.62;
+  align-self: flex-start;
+  /*
+   * 0.55em der ZIFFER (also 0.23em des Wortes) tiefer als der Kastenrand.
+   * Ohne diesen Versatz säße die Ziffer am oberen Rand des Zeilenkastens und
+   * schwebte bei einem 100 px großen Wort dreißig Pixel über dem „P" — sie
+   * gehörte optisch zu nichts mehr. So steht ihre Oberkante knapp über der
+   * Versalhöhe: eine Fußnote AM Wort.
+   */
+  margin-top: 0.55em;
+  margin-left: 0.14em;
+  font-size: 0.42em;
+  font-weight: 600;
+  opacity: 0.55;
 }
 
+/*
+ * Rückmeldung beim Überfahren: voll da und einen Hauch größer. Mehr braucht
+ * es nicht — und mehr wäre auch nicht drin, denn `scale` wirkt prozentual:
+ * Bei einem 500 px breiten Wort sind 5 % schon fünfundzwanzig Pixel. Damit
+ * das angehobene Wort nie hinter einem Nachbarn hängt, kommt es für den
+ * Moment nach vorn.
+ */
 @media (hover: hover) and (pointer: fine) {
-  .mcf-word:hover .mcf-pill {
-    transform: scale(1.05);
-    box-shadow: var(--shadow-card);
+  .mcf-word:hover {
+    z-index: 2;
+  }
+
+  .mcf-word:hover .mcf-ink {
+    opacity: 1;
+    transform: scale(1.045);
   }
 }
 
 /* Nach der Hover-Regel notiert, damit der Druck sie überschreibt. */
-.mcf-word:active .mcf-pill {
+.mcf-word:active .mcf-ink {
   transform: scale(0.97);
   transition-duration: 110ms;
 }
 
 /*
- * Das offene Wort. Ein Ring in Fuchs sagt „von hier kommen die Stimmen im
- * Panel" — und das Schweben hält an: Was man gerade liest, soll stillstehen.
+ * Fokus. Ohne Pille gibt es keinen Rahmen mehr, an dem man sich festhalten
+ * könnte — also muss der Ring es allein tragen. Er kommt aus globals.css
+ * (2 px Fuchs); hier wird nur die Rundung von 8 px auf ein Maß gebracht, das
+ * zu einem eng sitzenden Wortkasten passt, und das Wort geht auf volle
+ * Deckkraft, damit Tastatur und Maus dieselbe Rückmeldung geben.
  */
-.mcf-word[data-selected] .mcf-pill {
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--color-fox) 55%, transparent),
-    var(--shadow-card-lg);
+.mcf-word:focus-visible {
+  border-radius: 6px;
+  z-index: 2;
+}
+
+.mcf-word:focus-visible .mcf-ink {
+  opacity: 1;
+}
+
+/*
+ * Das offene Wort. Statt des früheren Fuchs-Rings um die Pille eine
+ * typografische Markierung: eine Unterstreichung in Fuchs. Sie sagt
+ * „von hier kommen die Stimmen im Panel", ohne dem Wort ein Kästchen
+ * zurückzugeben — und sie verändert den Kasten nicht, mit dem die Anordnung
+ * rechnet. Das Schweben hält an: Was man gerade liest, soll stillstehen.
+ */
+.mcf-word[data-selected] .mcf-ink {
+  opacity: 1;
+  transform: scale(1.045);
+}
+
+.mcf-word[data-selected] .mcf-text {
+  text-decoration: underline;
+  text-decoration-color: var(--color-fox);
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.12em;
 }
 
 .mcf-word[data-selected] .mcf-float {
   animation-play-state: paused;
-}
-
-/* Der globale Fokusring rundet auf 8 px ab — ein Wort bleibt rund. */
-.mcf-word:focus-visible {
-  border-radius: 999px;
 }
 
 /* ========================================================================== */
@@ -390,13 +488,15 @@
   .mcf-root,
   .mcf-root[data-state="closing"],
   .mcf-word,
+  .mcf-root[data-state="closing"] .mcf-word,
   .mcf-float,
   .mcf-panel {
     animation: none;
   }
 
-  .mcf-word:hover .mcf-pill,
-  .mcf-word:active .mcf-pill,
+  .mcf-word:hover .mcf-ink,
+  .mcf-word:active .mcf-ink,
+  .mcf-word[data-selected] .mcf-ink,
   .mcf-x:active,
   .mc-toggle:hover .mc-grow,
   .mc-toggle:active .mc-grow {

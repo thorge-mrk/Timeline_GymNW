@@ -10,6 +10,7 @@ import type { Entry, Voice } from "@/lib/types";
 import { useAuth } from "@/hooks/useAuth";
 import ImageLightbox from "./ImageLightbox";
 import Modal from "./Modal";
+import VoiceList from "./VoiceList";
 import "./timeline.css";
 
 interface EntryDetailModalProps {
@@ -21,6 +22,12 @@ interface EntryDetailModalProps {
   voices?: Voice[];
   /** Nur gesetzt, wenn jemand angemeldet ist — dann darf man selbst dazuschreiben. */
   onAddVoice?: (entry: Entry) => void;
+  /**
+   * Eine Stimme wurde geändert oder gelöscht (nur Verwaltung). Die Seite lädt
+   * die Stimmen dieses Themas dann neu, damit auch die Zähler am Zeitstrahl
+   * und an der Wolke wieder stimmen.
+   */
+  onVoicesChanged?: (entryId: string) => void;
 }
 
 /** So viele Vorschaubilder passen in eine Reihe — schmal bzw. ab `sm`. */
@@ -70,43 +77,6 @@ function RankBadge({ entry }: { entry: Entry }) {
 }
 
 /**
- * Eine weitere Stimme zum selben Thema.
- *
- * Bewusst KEINE Kommentarspalte: kein Zeitstempel, kein Bildchen, kein
- * Antworten. Was hier steht, ist eine Erinnerung — also sieht es aus wie ein
- * Zitat: ein farbiger Strich in der Kategoriefarbe des Themas, der Text, und
- * darunter leise, wer das erzählt hat.
- *
- * Der Text ist einfacher Text. `whitespace-pre-line` erhält die Absätze, die
- * jemand am Tablet getippt hat; ins Dokument kommt er als React-Kind und
- * niemals als HTML — hier lässt sich nichts einschleusen.
- */
-function VoiceCard({ voice, accent }: { voice: Voice; accent: string }) {
-  const attribution = [
-    voice.author_name?.trim() || null,
-    voice.class_name ? `Klasse ${voice.class_name}` : null,
-  ]
-    .filter(Boolean)
-    .join(", ");
-
-  return (
-    <li className="relative rounded-xl bg-paper-sunk py-3 pr-3.5 pl-4">
-      <span
-        aria-hidden="true"
-        className="absolute inset-y-2.5 left-0 w-[3px] rounded-full"
-        style={{ backgroundColor: accent, opacity: 0.5 }}
-      />
-      <p className="text-[15px] leading-relaxed whitespace-pre-line text-coal">
-        {voice.body}
-      </p>
-      {attribution && (
-        <p className="mt-2 text-xs text-coal-faint">— {attribution}</p>
-      )}
-    </li>
-  );
-}
-
-/**
  * Detailansicht eines Eintrags.
  *
  * Aufbau von oben nach unten: randloses Titelbild, Kopf (Kategorie-Badge und
@@ -126,6 +96,7 @@ export default function EntryDetailModal({
   onDeleted,
   voices,
   onAddVoice,
+  onVoicesChanged,
 }: EntryDetailModalProps) {
   const titleId = useId();
   const { isAdmin } = useAuth();
@@ -175,20 +146,9 @@ export default function EntryDetailModal({
    */
   const dateText = formatEntryDate(entry);
 
-  /*
-   * Chronologisch, älteste zuerst: Die Stimmen sollen sich lesen wie ein
-   * Gespräch, das gewachsen ist. Sortiert wird hier trotz zugesicherter
-   * Reihenfolge noch einmal selbst — bei gleicher Sekunde entscheidet die id,
-   * damit zwei Stimmen aus derselben Minute nicht bei jedem Laden die Plätze
-   * tauschen.
-   */
-  const sortedVoices = useMemo(() => {
-    if (!voices?.length) return [];
-    return [...voices].sort((a, b) => {
-      const byTime = a.created_at.localeCompare(b.created_at);
-      return byTime !== 0 ? byTime : a.id.localeCompare(b.id);
-    });
-  }, [voices]);
+  /* Reihenfolge und Darstellung der Stimmen macht `VoiceList` — hier zählt
+     nur noch, wie viele es sind. */
+  const voiceCount = voices?.length ?? 0;
 
   const openLightbox = useCallback((index: number, trigger: HTMLElement) => {
     lightboxTrigger.current = trigger;
@@ -304,32 +264,28 @@ export default function EntryDetailModal({
             ersten — gleichberechtigt, in derselben Schriftgröße, nur durch
             eine Linie abgesetzt.
           */}
-          {(sortedVoices.length > 0 || onAddVoice) && (
+          {(voiceCount > 0 || onAddVoice) && (
             <section className="mt-6 border-t border-paper-line pt-5">
-              {sortedVoices.length > 0 && (
-                <>
+              {/*
+                Liste, Überschrift und — für die Verwaltung — Bearbeiten und
+                Löschen einzelner Stimmen liegen in `VoiceList`; das Panel der
+                Erinnerungs-Wolke zeigt genau dieselbe Liste.
+              */}
+              <VoiceList
+                voices={voices ?? []}
+                accent={category.color}
+                onVoicesChanged={onVoicesChanged}
+                heading={(count) => (
                   <div className="mb-3 flex items-baseline justify-between gap-3">
                     <h3 className="label mb-0">
                       Weitere Stimmen zu diesem Thema
                     </h3>
                     <span className="hint shrink-0 tabular-nums">
-                      {sortedVoices.length === 1
-                        ? "1 Stimme"
-                        : `${sortedVoices.length} Stimmen`}
+                      {count === 1 ? "1 Stimme" : `${count} Stimmen`}
                     </span>
                   </div>
-
-                  <ul className="flex flex-col gap-2.5">
-                    {sortedVoices.map((voice) => (
-                      <VoiceCard
-                        key={voice.id}
-                        voice={voice}
-                        accent={category.color}
-                      />
-                    ))}
-                  </ul>
-                </>
-              )}
+                )}
+              />
 
               {/* Ruhig, ganze Breite, keine Farbe: Die Einladung soll da sein,
                   ohne den Erinnerungen die Aufmerksamkeit wegzunehmen. */}
@@ -337,9 +293,7 @@ export default function EntryDetailModal({
                 <button
                   type="button"
                   onClick={() => onAddVoice(entry)}
-                  className={`btn-ghost w-full ${
-                    sortedVoices.length > 0 ? "mt-3" : ""
-                  }`}
+                  className={`btn-ghost w-full ${voiceCount > 0 ? "mt-3" : ""}`}
                 >
                   Auch meine Erinnerung dazuschreiben
                 </button>

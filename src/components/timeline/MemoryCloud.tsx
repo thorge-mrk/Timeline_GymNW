@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef } from "react";
-import { categoryPillStyle } from "@/lib/categories";
+import { categoryById } from "@/lib/categories";
 import type { Entry, Voice } from "@/lib/types";
 import MemoryCloudFull, { type CloudWord } from "./MemoryCloudFull";
 import "./memoryCloud.css";
@@ -20,6 +20,8 @@ interface MemoryCloudProps {
   onOpenChange: (open: boolean) => void;
   /** Nur gesetzt, wenn jemand angemeldet ist — dann darf man dazuschreiben. */
   onAddVoice?: (entry: Entry) => void;
+  /** Die Verwaltung hat eine Stimme geändert oder entfernt — Zähler nachladen. */
+  onVoicesChanged?: (entryId: string) => void;
 }
 
 /** Ab hier wird der Titel gekürzt. Der volle Text bleibt in `title` und `aria-label`. */
@@ -42,11 +44,35 @@ const FLAT_WEIGHT = 0.35;
  * dreißig Menschen an die Bläserklasse und drei an den Schulhof-Kastanienbaum,
  * dann steht der Kastanienbaum als unlesbarer Krümel neben einem Plakat. Der
  * Deckel sagt: „ab acht ist es ein großes Thema" — wie viel größer genau,
- * verrät die Zahl an der Pille und das Panel. Zusammen mit der Wurzel unten
- * bleibt der Unterschied zwischen 1 und 8 gut sichtbar und alles darüber
- * angenehm ruhig.
+ * verrät die hochgestellte Zahl am Wort und das Panel dahinter.
  */
 const MEMORY_CAP = 8;
+
+/**
+ * Die Kennlinie der Wortgröße: Erinnerungen hoch `CURVE`.
+ *
+ * Vorher stand hier die WURZEL. Die ist mathematisch sympathisch — zwischen 1
+ * und 2 Stimmen liegt gefühlt mehr als zwischen 11 und 12 —, aber sie tut
+ * genau das Falsche für eine Wolke: Sie drückt die SPITZE zusammen. Mit den
+ * echten Daten (5 · 4 · 4 · 3 · 3 · 2 …) stand das lauteste Thema nur 14 %
+ * über dem zweiten, und das Bild sah aus wie eine Liste.
+ *
+ * Ein Exponent ÜBER eins dreht das um: Er spreizt oben und rafft unten.
+ * Bei 1.4 und derselben Datenlage ergibt sich (auf 1440 px, 21 … 104 px):
+ *
+ *     5 Erinnerungen → 104 px      das Erste, was man sieht
+ *     4 Erinnerungen →  80 px
+ *     3 Erinnerungen →  57 px
+ *     2 Erinnerungen →  37 px
+ *     1 Erinnerung   →  21 px      der leise Rand der Wolke
+ *
+ * Genau die Staffelung, um die die Schule gebeten hat: „die erste weit
+ * größer, dann kleiner". Der lange Schwanz gleich großer Einer-Wörter ist
+ * dabei kein Fehler, sondern ehrlich — zwischen zwei Themen mit je einer
+ * Erinnerung gibt es nichts zu unterscheiden, und eine erfundene Staffelung
+ * wäre gelogen.
+ */
+const CURVE = 1.4;
 
 /**
  * So viele Wörter zeigt die Wolke höchstens.
@@ -93,9 +119,10 @@ function shorten(title: string): string {
  *                sanft schwebend, zum Zoomen und Schieben, mit den Stimmen
  *                hinter jedem Wort.
  *
- * Gelesen wird die Wolke über zwei Kanäle gleichzeitig:
- *   Größe → wie viele Menschen sich an dieses Thema erinnern
- *   Farbe → Kategorie, dieselben Pillen-Farben wie an der Achse
+ * Gelesen wird die Wolke über drei Kanäle gleichzeitig — und alle drei
+ * stecken in der Schrift selbst, nicht in einem Kästchen drumherum:
+ *   Größe und Gewicht → wie viele Menschen sich an dieses Thema erinnern
+ *   Farbe             → Kategorie, dieselbe Tinte wie an der Achse
  *
  * Ohne datumslose Einträge gibt die Komponente `null` zurück und steht
  * niemandem im Weg.
@@ -108,6 +135,7 @@ export default function MemoryCloud({
   open,
   onOpenChange,
   onAddVoice,
+  onVoicesChanged,
 }: MemoryCloudProps): React.ReactElement | null {
   /** Das Band bekommt den Fokus zurück, wenn die Vollansicht schließt. */
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -139,10 +167,11 @@ export default function MemoryCloud({
     const shown = counted.slice(0, MAX_WORDS);
 
     /*
-     * Wurzel statt gerader Linie: Zwischen 1 und 2 Stimmen liegt gefühlt ein
-     * riesiger Unterschied, zwischen 11 und 12 kaum einer. Linear skaliert
-     * würde ein einzelnes lautes Thema alle anderen zu Fußnoten machen.
-     * Über `MEMORY_CAP` hinaus wächst gar nichts mehr.
+     * Die Kennlinie (siehe `CURVE`): erst deckeln, dann potenzieren, dann auf
+     * 0 … 1 normieren. Gerechnet wird immer gegen das kleinste und größte
+     * Thema DIESER Wolke, nicht gegen feste Zahlen — so nutzt die Staffelung
+     * die volle Spanne, egal ob das lauteste Thema drei oder dreißig
+     * Erinnerungen hat.
      */
     let low = Infinity;
     let high = 0;
@@ -151,11 +180,12 @@ export default function MemoryCloud({
       if (capped < low) low = capped;
       if (capped > high) high = capped;
     }
-    const span = Math.sqrt(high) - Math.sqrt(low);
+    const floor = Math.pow(low, CURVE);
+    const span = Math.pow(high, CURVE) - floor;
     for (const word of shown) {
       const capped = Math.min(word.memories, MEMORY_CAP);
       word.weight =
-        span > 0 ? (Math.sqrt(capped) - Math.sqrt(low)) / span : FLAT_WEIGHT;
+        span > 0 ? (Math.pow(capped, CURVE) - floor) / span : FLAT_WEIGHT;
     }
 
     return shown;
@@ -208,20 +238,26 @@ export default function MemoryCloud({
           </span>
 
           {/*
-            Vorgeschmack: die drei lautesten Themen in ihrer Kategoriefarbe.
-            Auf dem Handy ist dafür kein Platz — dort führt allein die Zahl.
+            Vorgeschmack: die drei lautesten Themen in ihrer Kategoriefarbe —
+            als blanke Wörter, genau wie in der Wolke selbst. Ein Kästchen hier
+            und Schrift dort wäre ein Versprechen, das die Vollansicht nicht
+            hält. Getrennt wird mit einem Mittelpunkt, damit aus drei Wörtern
+            kein Satz wird. Auf dem Handy ist dafür kein Platz — dort führt
+            allein die Zahl.
           */}
           <span
             aria-hidden="true"
-            className="mc-peek hidden shrink-0 items-center gap-1.5 sm:flex"
+            className="mc-peek hidden shrink-0 items-baseline gap-1.5 sm:flex"
           >
-            {words.slice(0, PEEK_COUNT).map((word) => (
-              <span
-                key={word.entry.id}
-                className="max-w-[11rem] truncate rounded-full border px-2 py-0.5 text-[11px] leading-4 font-semibold"
-                style={categoryPillStyle(word.entry.category)}
-              >
-                {word.label}
+            {words.slice(0, PEEK_COUNT).map((word, index) => (
+              <span key={word.entry.id} className="flex items-baseline gap-1.5">
+                {index > 0 && <span className="text-coal-faint">·</span>}
+                <span
+                  className="max-w-[11rem] truncate text-[12px] leading-4 font-bold"
+                  style={{ color: categoryById(word.entry.category).ink }}
+                >
+                  {word.label}
+                </span>
               </span>
             ))}
           </span>
@@ -255,6 +291,7 @@ export default function MemoryCloud({
           voicesFor={voicesFor}
           onOpenEntry={onOpen}
           onAddVoice={onAddVoice}
+          onVoicesChanged={onVoicesChanged}
           onClose={() => onOpenChange(false)}
           returnFocus={toggleRef}
         />
