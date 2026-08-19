@@ -293,6 +293,12 @@ export interface EntryFormProps {
   removed?: boolean;
   /** Nach jedem erfolgreichen Schreiben in die Datenbank. */
   onSaved?: (kind: "created" | "updated") => void;
+  /**
+   * Direkt zu einem bestehenden Thema dazuschreiben — der Weg vom Knopf
+   * „Auch meine Erinnerung dazuschreiben“ im Detail-Fenster. Dann wird gar
+   * kein neuer Eintrag angeboten, sondern gleich die Stimme.
+   */
+  voiceFor?: Entry | null;
 }
 
 export function EntryForm({
@@ -301,6 +307,7 @@ export function EntryForm({
   entry = null,
   removed = false,
   onSaved,
+  voiceFor = null,
 }: EntryFormProps) {
   const router = useRouter();
   const isEdit = entry !== null;
@@ -386,7 +393,7 @@ export function EntryForm({
    * schreibt jetzt dorthin statt einen zweiten Punkt anzulegen. Der eigene
    * Entwurf bleibt dabei vollständig stehen — der Weg zurück ist einen Klick weit.
    */
-  const [voiceTarget, setVoiceTarget] = useState<Entry | null>(null);
+  const [voiceTarget, setVoiceTarget] = useState<Entry | null>(voiceFor);
 
   const busy = phase !== "idle";
   const showClassField = CLASS_CATEGORIES.includes(category);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import SchoolMark from "@/components/SchoolMark";
 import { nowYearFraction } from "@/lib/dates";
 import { splitByDate } from "@/lib/entryGroups";
@@ -15,8 +16,11 @@ import FilterBar, {
   usesClassFilter,
   type FilterState,
 } from "@/components/timeline/FilterBar";
+import EntryDetailModal from "@/components/timeline/EntryDetailModal";
+import MemoryCloud from "@/components/timeline/MemoryCloud";
 import NewEntriesBeacon from "@/components/timeline/NewEntriesBeacon";
 import Timeline, { type FocusRequest } from "@/components/timeline/Timeline";
+import { useAuth } from "@/hooks/useAuth";
 import "@/components/timeline/timeline.css";
 
 /**
@@ -81,6 +85,7 @@ function matchesFilter(entry: Entry, filter: FilterState): boolean {
 }
 
 export default function Home() {
+  const router = useRouter();
   const { entries, setEntries, loading, error, refetch } = useEntries();
   const { index: voiceIndex, refetchEntry: refetchVoices } = useVoices();
   const [filter, setFilter] = useState<FilterState>(INITIAL_FILTER);
@@ -97,6 +102,13 @@ export default function Home() {
 
   /** Live-Übertragung und Vollbild sind pro Gerät einstellbar. */
   const { settings } = useSettings();
+  /** Angemeldet? Dann darf man zu einem Thema dazuschreiben. */
+  const { isContributor } = useAuth();
+
+  /** Ist die Erinnerungs-Wolke aufgeklappt? */
+  const [cloudOpen, setCloudOpen] = useState(false);
+  /** Aus der Wolke geöffnetes Thema — der Zeitstrahl hat sein eigenes Fenster. */
+  const [cloudEntry, setCloudEntry] = useState<Entry | null>(null);
 
   /** Immer der aktuelle Stand der Schlange — für den Selbstlauf weiter unten. */
   const pendingRef = useRef<Entry[]>(pending);
@@ -235,6 +247,15 @@ export default function Home() {
     lastInteractionRef.current = Date.now();
   }, []);
 
+  /** Ein Fenster aus der Wolke verdeckt den Zeitstrahl genauso wie eins vom Strahl. */
+  const overlayVisible = overlayOpen || cloudEntry !== null;
+
+  /** Zu einem Thema dazuschreiben — der Weg führt ins Formular. */
+  const goAddVoice = useCallback(
+    (entry: Entry) => router.push(`/eintragen/?ergaenzen=${entry.id}`),
+    [router]
+  );
+
   // Der Ruhezeit-Zähler startet mit dem Laden der Seite, nicht bei null —
   // sonst gälte der allererste Moment schon als „acht Sekunden nichts getan".
   useEffect(() => {
@@ -334,10 +355,37 @@ export default function Home() {
 
         <NewEntriesBeacon
           pending={pending}
-          hidden={overlayOpen}
+          hidden={overlayVisible}
           onJump={handleJump}
         />
       </div>
+
+      {/*
+        Die Erinnerungen ohne Jahreszahl. Sie stehen UNTER dem Zeitstrahl, nicht
+        darauf — ein eigener Ort für alles, was sich nicht datieren lässt, ohne
+        dass jemand ein Datum erfinden müsste. Ist die Wolke leer, gibt die
+        Komponente `null` zurück und nimmt keinen Platz weg.
+      */}
+      <MemoryCloud
+        entries={filteredUndated}
+        voiceCount={voiceCount}
+        onOpen={setCloudEntry}
+        open={cloudOpen}
+        onOpenChange={setCloudOpen}
+      />
+
+      {cloudEntry && (
+        <EntryDetailModal
+          entry={cloudEntry}
+          onClose={() => setCloudEntry(null)}
+          onDeleted={(id) => {
+            handleRemove(id);
+            setCloudEntry(null);
+          }}
+          voices={voiceIndex.forEntry(cloudEntry.id)}
+          onAddVoice={isContributor ? goAddVoice : undefined}
+        />
+      )}
     </div>
   );
 }
