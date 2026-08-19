@@ -573,6 +573,11 @@
   background-color: var(--color-fox-soft);
   box-shadow: var(--shadow-card);
 }
+/* Noch nichts gewählt, obwohl „Weiter“ gedrückt wurde: beide Karten
+   bekennen Farbe — die Frage ist offen, nicht eine bestimmte Antwort. */
+.kind-card[data-missing="true"] {
+  border-color: color-mix(in srgb, var(--color-brick) 50%, transparent);
+}
 /* Druck-Rückmeldung: Die Karte gibt unter dem Finger nach. */
 .kind-card:active:not(:has(input:disabled)) {
   transform: scale(0.97);

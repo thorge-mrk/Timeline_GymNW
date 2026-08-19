@@ -32,6 +32,8 @@ export interface CloudWord {
 interface MemoryCloudFullProps {
   /** Bereits sortiert: das lauteste Thema zuerst. */
   words: CloudWord[];
+  /** Wie viele datumslose Beiträge es insgesamt gibt (kann größer sein als `words`). */
+  total: number;
   /** Stimmen für das Panel. Fehlt die Funktion, zeigt das Panel nur den Eintrag. */
   voicesFor?: (entryId: string) => Voice[];
   /** Den ganzen Eintrag im Detail-Fenster öffnen — schließt vorher die Wolke. */
@@ -52,9 +54,17 @@ const DRAG_SLOP = 6;
 const STAGGER_MS = 26;
 const STAGGER_MAX_MS = 560;
 
-/** Grenzen des Einpass-Zooms: nie kleiner als halb, nie größer als knapp doppelt. */
+/**
+ * Grenzen des Einpass-Zooms.
+ *
+ * Nach dem Anordnen wird die ganze Wolke ins Bild gerückt. Sind es wenige
+ * Themen, bleibt viel Fläche frei — dann darf die Wolke größer gezogen
+ * werden, sonst klebte ein winziger Klumpen mitten auf einer leeren Wand.
+ * Nach unten ist bei der Hälfte Schluss: Wer noch weiter herausmüsste, sieht
+ * lieber einen Ausschnitt und schiebt.
+ */
 const FIT_MIN = 0.5;
-const FIT_MAX = 1.85;
+const FIT_MAX = 1.6;
 
 interface View {
   k: number;
@@ -114,13 +124,14 @@ function makeMeasure(family: string, slack: number): Measure {
  *              Rechteck gegen Rechteck geprüft, Streuung aus der Eintrags-id.
  *              Diese Datei legt das Ergebnis nur aus.
  *
- *   BEWEGUNG   zwei Ebenen je Wort. Außen läuft das Wort einmal herein
+ *   BEWEGUNG   drei ineinandergelegte Ebenen je Wort: außen das Hereinkommen
  *              (Deckkraft + Maßstab, gestaffelt von der Mitte nach außen),
- *              innen schwebt es danach endlos weiter. Zwei Ebenen, weil auf
- *              einem Element immer nur EIN `transform` gleichzeitig laufen
- *              kann. Bewegt werden ausschließlich `transform` und `opacity`
- *              — nichts davon zwingt den Browser zu neuem Layout, die Wolke
- *              kann also stundenlang auf einem Beamer stehen.
+ *              in der Mitte das endlose Schweben, innen die Pille mit Hover
+ *              und Druck. Drei, weil auf einem Element immer nur EIN
+ *              `transform` gleichzeitig laufen kann. Bewegt werden
+ *              ausschließlich `transform` und `opacity` — nichts davon zwingt
+ *              den Browser zu neuem Layout, die Wolke kann also stundenlang
+ *              auf einem Beamer stehen.
  *
  *   GESTEN     Rad, Kneifen und Ziehen liegen als eigene Zuhörer auf dieser
  *              Ansicht. Der Zeitstrahl darunter hat sein eigenes d3-Zoom;
@@ -132,6 +143,7 @@ function makeMeasure(family: string, slack: number): Measure {
  */
 export default function MemoryCloudFull({
   words,
+  total,
   voicesFor,
   onOpenEntry,
   onAddVoice,
@@ -388,10 +400,87 @@ export default function MemoryCloudFull({
     applyView();
   }, [applyView, fit]);
 
+  /**
+   * Eine geführte Fahrt statt eines Sprungs.
+   *
+   * Beim Ziehen wird der Ausschnitt Bild für Bild neu gesetzt — da wäre eine
+   * Übergangszeit genau das, was sich „klebrig" anfühlt. Nur wenn die Ansicht
+   * von selbst wandert (weil das Panel aufgeht), bekommt sie für einen Moment
+   * eine Kurve mit und nimmt sie danach wieder ab.
+   */
+  const glideTimer = useRef<number | undefined>(undefined);
+
+  const glideTo = useCallback(
+    (next: View) => {
+      const world = worldRef.current;
+      if (world && !prefersReducedMotion()) {
+        world.dataset.glide = "true";
+        window.clearTimeout(glideTimer.current);
+        glideTimer.current = window.setTimeout(() => {
+          delete world.dataset.glide;
+        }, 420);
+      }
+      setView(next);
+    },
+    [setView]
+  );
+
+  useEffect(() => () => window.clearTimeout(glideTimer.current), []);
+
   // Neue Anordnung (anderer Bildschirm, andere Daten) → wieder alles im Bild.
   useEffect(() => {
     resetView();
   }, [resetView, layout]);
+
+  /*
+   * Das offene Wort darf nicht hinter dem Panel verschwinden.
+   *
+   * Das Panel legt sich über die Wolke (breit: rechte Spalte, schmal:
+   * Schublade von unten). Wer ein Wort am rechten Rand antippt, bekäme sonst
+   * die Stimmen zu sehen — und das Wort dazu nicht mehr. Also rückt die
+   * Ansicht das Wort so weit heraus, dass es frei steht: eine kurze,
+   * geführte Fahrt, kein Sprung, und nur so weit wie nötig.
+   */
+  useEffect(() => {
+    if (!selected || !layout || !size) return;
+    const placed = layout.words.find((word) => word.id === selected);
+    const stage = stageRef.current;
+    const panel = panelRef.current?.firstElementChild;
+    if (!placed || !stage || !panel) return;
+
+    const stageRect = stage.getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    const pad = 24;
+    const wide = stageRect.width >= 1024;
+    const safe = wide
+      ? {
+          x0: pad,
+          x1: panelRect.left - stageRect.left - pad,
+          y0: pad,
+          y1: stageRect.height - pad,
+        }
+      : {
+          x0: pad,
+          x1: stageRect.width - pad,
+          y0: pad,
+          y1: panelRect.top - stageRect.top - pad,
+        };
+
+    const view = viewRef.current;
+    const x = view.x + placed.box.x * view.k;
+    const y = view.y + placed.box.y * view.k;
+    const w = placed.box.w * view.k;
+    const h = placed.box.h * view.k;
+
+    let dx = 0;
+    let dy = 0;
+    if (x + w > safe.x1) dx = safe.x1 - (x + w);
+    if (x + dx < safe.x0) dx = safe.x0 - x;
+    if (y + h > safe.y1) dy = safe.y1 - (y + h);
+    if (y + dy < safe.y0) dy = safe.y0 - y;
+
+    if (dx || dy) glideTo({ k: view.k, x: view.x + dx, y: view.y + dy });
+  }, [glideTo, layout, selected, size]);
 
   /* --------------------------------------------------------------- Rad */
 
@@ -513,8 +602,17 @@ export default function MemoryCloudFull({
 
   /* ---------------------------------------------------------------- Klick */
 
-  const openWord = useCallback((id: string) => {
-    if (dragged.current) return;
+  /**
+   * Ein Wort öffnen — oder wieder schließen, wenn es schon offen ist.
+   *
+   * `fromPointer` unterscheidet die beiden Wege dorthin: Ein Klick, der nur
+   * das Ende eines Schiebens ist, darf kein Wort öffnen — sonst poppt beim
+   * Loslassen der Wolke ein Panel auf. Die Tastatur ist davon ausgenommen
+   * (Klicks per Leertaste oder Eingabe melden `detail === 0`), sonst bliebe
+   * ein Wort nach einmaligem Schieben mit der Maus für immer stumm.
+   */
+  const openWord = useCallback((id: string, fromPointer: boolean) => {
+    if (fromPointer && dragged.current) return;
     setSelected((current) => (current === id ? null : id));
   }, []);
 
@@ -523,11 +621,26 @@ export default function MemoryCloudFull({
     [selected, words]
   );
 
+  /** Nachschlagewerk für die Ausgabe — sonst wäre jedes Wort eine Suche. */
+  const byId = useMemo(
+    () => new Map(words.map((word) => [word.entry.id, word])),
+    [words]
+  );
+
   if (!host) return null;
 
   const state = closing ? "closing" : "open";
+  /*
+   * Bei sehr vielen datumslosen Beiträgen zeigt die Wolke nur die lautesten.
+   * Dann steht das auch da — eine Zahl, die nicht zur Zeile im Band passt,
+   * wäre ein Rätsel.
+   */
   const countLabel =
-    words.length === 1 ? "1 Beitrag" : `${words.length} Beiträge`;
+    total > words.length
+      ? `${words.length} von ${total} Beiträgen`
+      : total === 1
+        ? "1 Beitrag"
+        : `${total} Beiträge`;
 
   return createPortal(
     <div
@@ -565,11 +678,20 @@ export default function MemoryCloudFull({
           Zurück zum Zeitstrahl
         </button>
 
+        {/*
+          Auf dem Handy ist neben dem großen Knopf kein Platz für eine
+          Überschrift, die sich sowieso nur zu „Erinnerungen o…" kürzen würde.
+          Sie bleibt für Vorlesestimmen stehen (`sr-only`) und tritt erst ab
+          `sm` sichtbar dazu; die Zahl trägt dort allein.
+        */}
         <div className="min-w-0 flex-1">
-          <h2 id={titleId} className="truncate text-[15px] font-bold text-coal">
+          <h2
+            id={titleId}
+            className="sr-only truncate text-[15px] font-bold text-coal sm:not-sr-only"
+          >
             Erinnerungen ohne Datum
           </h2>
-          <p className="truncate text-[12px] text-coal-soft">
+          <p className="truncate text-[13px] text-coal-soft sm:text-[12px]">
             <span className="tabular-nums">{countLabel}</span>
             <span className="hidden sm:inline">
               {" "}
@@ -578,13 +700,28 @@ export default function MemoryCloudFull({
           </p>
         </div>
 
+        {/*
+          Auf dem Handy nur das Zeichen: Neben dem großen Zurück-Knopf ist für
+          drei Wörter kein Platz, und abgeschnittene Beschriftung ist schlimmer
+          als gar keine. Der Name steht im `aria-label`.
+        */}
         {shifted && (
           <button
             type="button"
             onClick={resetView}
-            className="btn-ghost mcf-reset shrink-0 px-3 py-2 text-[13px]"
+            aria-label="Ansicht zurücksetzen"
+            className="btn-ghost mcf-reset shrink-0 px-2.5 py-2.5 text-[13px] sm:px-3"
           >
-            Ansicht zurücksetzen
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M2.5 5.6V2.5h3.1M13.5 5.6V2.5h-3.1M2.5 10.4v3.1h3.1M13.5 10.4v3.1h-3.1"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="hidden sm:inline">Ansicht zurücksetzen</span>
           </button>
         )}
       </header>
@@ -598,7 +735,7 @@ export default function MemoryCloudFull({
       >
         <div ref={worldRef} className="mcf-world absolute top-0 left-0">
           {layout?.words.map((placed) => {
-            const word = words.find((w) => w.entry.id === placed.id);
+            const word = byId.get(placed.id);
             if (!word) return null;
             const memoryLabel =
               word.memories === 1 ? "1 Erinnerung" : `${word.memories} Erinnerungen`;
@@ -606,10 +743,10 @@ export default function MemoryCloudFull({
               <button
                 key={placed.id}
                 type="button"
-                onClick={() => openWord(placed.id)}
+                onClick={(event) => openWord(placed.id, event.detail !== 0)}
                 title={`${word.entry.title} — ${memoryLabel}`}
                 aria-label={`${word.entry.title}, ${memoryLabel}, öffnen`}
-                aria-pressed={selected === placed.id}
+                aria-expanded={selected === placed.id}
                 data-selected={selected === placed.id ? "true" : undefined}
                 className="mcf-word absolute cursor-pointer"
                 style={

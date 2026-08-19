@@ -109,8 +109,16 @@ const FONT_STEPS = [1, 0.9, 0.8, 0.72, 0.64] as const;
 /** Höhenzuwachs der Fläche, wenn selbst die kleinste Schrift nicht reicht. */
 const GROW_STEPS = [1, 1.4, 1.9, 2.6, 3.5] as const;
 
-/** Kein Wort darf breiter werden als dieser Anteil der Fläche. */
-const MAX_WORD_SHARE = 0.44;
+/**
+ * So weit darf ein Wort unter seine eigentliche Größe rutschen, damit sein
+ * Titel ungekürzt hineinpasst. 0.7 heißt: lieber etwas kleiner als
+ * „Bläser…" — aber nie so klein, dass die Rangfolge kippt und ein Thema mit
+ * sechs Stimmen aussieht wie eines mit einer.
+ */
+const SHRINK_FLOOR = 0.7;
+
+/** Absolute Untergrenze: darunter liest es auf drei Meter niemand mehr. */
+const MIN_SIZE = 13;
 
 /* -------------------------------------------------------------------------- */
 /*  Streuung ohne Zufall                                                      */
@@ -160,8 +168,23 @@ export function fontRange(w: number, h: number): { min: number; max: number } {
   const base = Math.min(w, h * 1.55);
   return {
     min: clamp(base * 0.042, 15, 24),
-    max: clamp(base * 0.105, 30, 72),
+    max: clamp(base * 0.09, 28, 68),
   };
+}
+
+/**
+ * Wie breit darf ein einzelnes Wort werden?
+ *
+ * Auf einem breiten Bildschirm wäre ein Wort über die halbe Breite ein
+ * Banner und keine Wolke — dort ist knapp die Hälfte die Grenze. Ein
+ * hochkantes Handy hat diese Wahl nicht: Dort ist die Wolke ohnehin eher eine
+ * Säule, und ein Wort darf fast die volle Breite nehmen, sonst bliebe von
+ * „Bläserklasse" nur „Bläser…" übrig.
+ */
+function wordShare(aspect: number): number {
+  if (aspect >= 1.2) return 0.46;
+  if (aspect >= 0.8) return 0.6;
+  return 0.8;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -314,13 +337,38 @@ function pack(
   const aspect = world.w / world.h;
   const growth = SPIRAL_TURN / (2 * Math.PI);
   const maxRadius = world.h * 0.78;
-  const maxWordWidth = world.w * MAX_WORD_SHARE;
+  const maxWordWidth = world.w * wordShare(aspect);
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    const size = Math.round(min + item.weight * (max - min));
 
-    // Erst auf die erlaubte Breite kürzen, dann den Kasten ausmessen.
+    /*
+     * Größe eines Wortes — zwei Stimmen reden mit.
+     *
+     * Erstens die Zahl der Erinnerungen (`weight`); sie führt. Zweitens die
+     * Länge des Titels: „Der Kastanienbaum auf dem Schulhof" bräuchte in
+     * voller Größe die halbe Wand. Statt ihn wegzuschneiden, wird er eine
+     * Nummer kleiner gesetzt — aber höchstens bis `SHRINK_FLOOR`, damit ein
+     * lautes Thema laut bleibt. Erst wenn auch das nicht reicht, wird gekürzt.
+     *
+     * Weil Breiten linear mit der Schriftgröße wachsen, lässt sich die
+     * passende Größe direkt ausrechnen statt zu probieren: `unit` ist die
+     * Breite des Titels bei Schriftgröße 1.
+     */
+    const wanted = min + item.weight * (max - min);
+    const unit = measure(item.label, 100) / 100;
+    const unitCount =
+      item.memories > 1 ? measure(` · ${item.memories}`, 62) / 100 : 0;
+    const roomy = (maxWordWidth - 2) / (unit + unitCount + 1.24);
+    // Abgerundet, nicht gerundet: Ein einziges Pixel zu viel würde den Kasten
+    // über die erlaubte Breite schieben und den Titel doch wieder anschneiden.
+    const size = Math.max(
+      MIN_SIZE,
+      Math.floor(Math.max(wanted * SHRINK_FLOOR, Math.min(wanted, roomy)))
+    );
+
+    // Was jetzt immer noch zu breit ist, wird gekürzt — der volle Titel bleibt
+    // im `title` und im `aria-label` erhalten.
     const extra =
       item.memories > 1 ? measure(` · ${item.memories}`, size * 0.62) : 0;
     const label = fitLabel(

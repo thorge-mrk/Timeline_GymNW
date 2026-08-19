@@ -397,8 +397,12 @@ export function EntryForm({
   /**
    * Ereignis oder bester Moment? Die allererste Frage — sie entscheidet, wie
    * viele Schritte überhaupt kommen. Beim Bearbeiten wird sie nie gestellt.
+   *
+   * Sie startet OHNE Vorauswahl (`null`). Eine Vorauswahl würde die eine Karte
+   * zur Normalform machen und die andere zum Sonderfall — und man käme mit
+   * einem Klick auf „Weiter“ daran vorbei, ohne die Frage gelesen zu haben.
    */
-  const [kind, setKind] = useState<EntryKind>("ereignis");
+  const [kind, setKind] = useState<EntryKind | null>(null);
 
   const [title, setTitle] = useState(entry?.title ?? "");
   const [dateText, setDateText] = useState(entry ? entryDateText(entry) : "");
@@ -488,9 +492,14 @@ export function EntryForm({
   /** Der kurze Weg in die Erinnerungs-Wolke — beim Bearbeiten gibt es ihn nicht. */
   const isMoment = wizard && kind === "moment";
 
-  /** Die Schritte dieses Durchgangs — je nach Weg und Rolle vier bis sechs. */
+  /**
+   * Die Schritte dieses Durchgangs — je nach Weg und Rolle vier bis sechs.
+   * Solange nichts gewählt ist, zeigt die Anzeige den längeren Weg; sobald die
+   * Wahl fällt, schrumpft sie sichtbar. Das ist keine Panne, sondern die
+   * ehrlichste Rückmeldung auf „Bester Moment“: Es wird kürzer.
+   */
   const steps = useMemo(
-    () => stepsFor(kind, wizard, isAdmin),
+    () => stepsFor(kind ?? "ereignis", wizard, isAdmin),
     [kind, wizard, isAdmin]
   );
   const lastStep = steps.length - 1;
@@ -569,6 +578,12 @@ export function EntryForm({
   function stepProblem(index: number): StepProblem | null {
     const key = steps[index]?.key;
 
+    if (key === "art" && kind === null) {
+      return {
+        message:
+          "Bitte wähl zuerst aus, was du beitragen möchtest — beides ist gleich willkommen.",
+      };
+    }
     if (key === "worum" && title.trim().length === 0) {
       return {
         message: isMoment
@@ -1048,7 +1063,14 @@ export function EntryForm({
   function stepContent(key: StepKey): React.ReactNode {
     switch (key) {
       case "art":
-        return <KindChoice value={kind} onChange={chooseKind} disabled={busy} />;
+        return (
+          <KindChoice
+            value={kind}
+            onChange={chooseKind}
+            disabled={busy}
+            showRequiredError={checkKey === "art"}
+          />
+        );
 
       case "worum":
         return (

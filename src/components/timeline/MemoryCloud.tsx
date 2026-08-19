@@ -169,7 +169,6 @@ export default function MemoryCloud({
   return (
     <>
       <section
-        data-state={open ? "open" : "closed"}
         aria-label="Erinnerungen ohne Datum"
         className="mc-root shrink-0 border-t border-paper-line bg-paper-card"
       >
@@ -252,6 +251,7 @@ export default function MemoryCloud({
       {open && (
         <MemoryCloudFull
           words={words}
+          total={total}
           voicesFor={voicesFor}
           onOpenEntry={onOpen}
           onAddVoice={onAddVoice}

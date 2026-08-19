@@ -95,16 +95,32 @@ const OPTIONS: readonly Option[] = [
 ] as const;
 
 export interface KindChoiceProps {
-  value: EntryKind;
+  /**
+   * `null` heißt: noch nicht gewählt. Es gibt bewusst keine Vorauswahl — sonst
+   * wäre eine der beiden Karten die Normalform und die andere der Sonderfall,
+   * und man könnte die Frage mit einem Klick auf „Weiter“ überspringen, ohne
+   * sie gelesen zu haben.
+   */
+  value: EntryKind | null;
   onChange: (kind: EntryKind) => void;
   disabled?: boolean;
+  /** Erst nach einem „Weiter“-Versuch sichtbar machen, dass hier noch etwas fehlt. */
+  showRequiredError?: boolean;
 }
 
-export function KindChoice({ value, onChange, disabled = false }: KindChoiceProps) {
+export function KindChoice({
+  value,
+  onChange,
+  disabled = false,
+  showRequiredError = false,
+}: KindChoiceProps) {
+  const missing = showRequiredError && value === null;
+
   return (
     <div
       role="radiogroup"
       aria-label="Was für ein Beitrag ist das?"
+      aria-required="true"
       /* Nebeneinander erst ab 40rem: Auf 390 px wäre die zweite Karte sonst
          nur noch halb so breit wie die Beispiele darin lang sind. */
       className="grid gap-3 sm:grid-cols-2"
@@ -115,6 +131,7 @@ export function KindChoice({ value, onChange, disabled = false }: KindChoiceProp
           <label
             key={option.id}
             data-on={active}
+            data-missing={missing}
             className={`kind-card flex flex-col gap-2.5 rounded-2xl border p-4
               has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2
               has-[:focus-visible]:outline-fox ${
