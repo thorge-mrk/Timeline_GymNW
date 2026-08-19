@@ -19,6 +19,7 @@ import FilterBar, {
 import EntryDetailModal from "@/components/timeline/EntryDetailModal";
 import MemoryCloud from "@/components/timeline/MemoryCloud";
 import NewEntriesBeacon from "@/components/timeline/NewEntriesBeacon";
+import WelcomeCurtain from "@/components/timeline/WelcomeCurtain";
 import Timeline, { type FocusRequest } from "@/components/timeline/Timeline";
 import { useAuth } from "@/hooks/useAuth";
 import "@/components/timeline/timeline.css";
@@ -33,6 +34,13 @@ const IDLE_BEFORE_FLIGHT_MS = 8000;
 
 /** So oft wird geprüft, ob die Ruhezeit erreicht ist. */
 const IDLE_CHECK_MS = 1000;
+
+/**
+ * Ab so vielen zusätzlichen Stimmen gilt ein Thema als wichtig und bekommt die
+ * größere Karte. Zwei genügen: Sobald sich ein zweiter Mensch an dasselbe
+ * erinnert, ist es keine Einzelerinnerung mehr — und genau das soll man sehen.
+ */
+const IMPORTANT_FROM_VOICES = 2;
 
 /** Breiten der Platzhalter-Marker — unregelmäßig, damit es nach Zeitstrahl aussieht. */
 const SKELETON_MARKERS = [86, 122, 96, 138, 92];
@@ -127,9 +135,33 @@ export default function Home() {
   // Gesamtbereich aus allen DATIERTEN Einträgen.
   const domain = useMemo(() => timelineDomain(dated, now), [dated, now]);
 
+  /*
+   * WICHTIGKEIT WIRD NICHT MEHR AUSGEWÄHLT, SIE WÄCHST.
+   *
+   * Früher konnte man beim Eintragen ankreuzen „das ist wichtig". Das war eine
+   * Behauptung. Jetzt entscheidet, wie viele Menschen dieselbe Erinnerung
+   * teilen: Wer allein an etwas denkt, bekommt eine Pille; woran sich mehrere
+   * erinnern, wird zur größeren Karte. Ein Thema wird also nicht wichtig, weil
+   * jemand das Kästchen gefunden hat, sondern weil es viele betrifft.
+   *
+   * Meilensteine bleiben davon unberührt — das sind die Eckdaten der Schule
+   * selbst und nicht das Ergebnis einer Abstimmung.
+   */
+  const ranked = useMemo(
+    () =>
+      dated.map((entry) =>
+        !entry.is_milestone &&
+        !entry.is_important &&
+        voiceIndex.count(entry.id) >= IMPORTANT_FROM_VOICES
+          ? { ...entry, is_important: true }
+          : entry
+      ),
+    [dated, voiceIndex]
+  );
+
   const filtered = useMemo(
-    () => dated.filter((entry) => matchesFilter(entry, filter)),
-    [dated, filter]
+    () => ranked.filter((entry) => matchesFilter(entry, filter)),
+    [ranked, filter]
   );
 
   /** Die datumslosen Erinnerungen — vom selben Filter erfasst. */
@@ -389,6 +421,9 @@ export default function Home() {
           onAddVoice={isContributor ? goAddVoice : undefined}
         />
       )}
+
+      {/* Einmal kurz sagen, was das hier ist — dann aus dem Weg. */}
+      <WelcomeCurtain ready={!loading && entries.length > 0} />
     </div>
   );
 }
