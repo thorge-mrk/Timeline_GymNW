@@ -385,6 +385,7 @@ export default function Home() {
             voiceCount={voiceCount}
             voicesFor={voiceIndex.forEntry}
             onAddVoice={isContributor ? goAddVoice : undefined}
+            onVoicesChanged={refetchVoices}
             emptyHint={
               filtered.length === 0
                 ? "Zu diesem Filter gibt es noch keine Einträge."
@@ -412,6 +413,7 @@ export default function Home() {
         voicesFor={voiceIndex.forEntry}
         onOpen={setCloudEntry}
         onAddVoice={isContributor ? goAddVoice : undefined}
+        onVoicesChanged={refetchVoices}
         open={cloudOpen}
         onOpenChange={setCloudOpen}
       />
@@ -426,6 +428,7 @@ export default function Home() {
           }}
           voices={voiceIndex.forEntry(cloudEntry.id)}
           onAddVoice={isContributor ? goAddVoice : undefined}
+          onVoicesChanged={refetchVoices}
         />
       )}
 
