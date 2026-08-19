@@ -11,10 +11,12 @@ import {
   categoryPillStyle,
   type CategoryId,
 } from "@/lib/categories";
-import { parseSmartDate } from "@/lib/dates";
+import { formatSmartDate, parseSmartDate } from "@/lib/dates";
+import { richTextToPlain } from "@/lib/richText";
 import { publicUrl, supabase } from "@/lib/supabase";
 import type { Entry, EntryInsert } from "@/lib/types";
 import { AudioUpload, type PreparedAudio } from "./AudioUpload";
+import { DateChoice, type DateMode } from "./DateChoice";
 import { GalleryUpload } from "./GalleryUpload";
 import { ImageUpload } from "./ImageUpload";
 import {
@@ -33,7 +35,10 @@ import {
   type EntryRank,
 } from "./RankChoice";
 import { RichTextInput } from "./RichTextInput";
-import { SmartDateInput } from "./SmartDateInput";
+import { SimilarPanel } from "./SimilarPanel";
+import { StepProgress, type StepDef } from "./StepProgress";
+import { SuccessCard } from "./SuccessCard";
+import { VoiceForm } from "./VoiceForm";
 
 const AUDIO_BUCKET = "entry-audio";
 
@@ -45,8 +50,56 @@ const AUTHOR_MAX = 80;
 const DATE_INPUT_ID = "entry-date";
 const DEFAULT_CATEGORY: CategoryId = "schueler";
 
-/** „10/3" → „10-3": Klasse/Zweig einheitlich mit Bindestrich statt Schrägstrich. */
-function normalizeClassName(value: string) {
+/**
+ * Der geführte Ablauf.
+ *
+ * Vorher war das eine einzige lange Seite mit zehn Feldern. Vor einem
+ * Menschen, der in der Pause dreißig Sekunden Zeit hat, ist das zu viel auf
+ * einmal — man sieht die Menge und nicht die Frage. Jetzt steht auf jedem
+ * Bildschirm genau eine Frage, und man weiß immer, wie viel noch kommt.
+ *
+ * Die Reihenfolge folgt dem, wie Menschen erzählen: erst WAS, dann WANN, dann
+ * die Geschichte, dann die Bilder — und am Ende einmal drübersehen. Die
+ * Rangstufe steht bewusst ganz hinten: „Wie wichtig ist das?“ kann man erst
+ * beantworten, wenn man den fertigen Eintrag vor sich sieht.
+ */
+const STEPS: readonly StepDef[] = [
+  {
+    key: "worum",
+    title: "Worum geht es?",
+    lead: "Gib der Erinnerung einen Namen — und sag, zu wem sie gehört.",
+  },
+  {
+    key: "wann",
+    title: "Wann war das?",
+    lead: "Das Jahr genügt. Und wenn du es nicht mehr weißt, ist das genauso richtig.",
+  },
+  {
+    key: "erzaehlen",
+    title: "Erzähl davon",
+    lead: "Was ist passiert? Und wer erinnert sich daran?",
+  },
+  {
+    key: "medien",
+    title: "Bild und Ton",
+    lead: "Ein Foto macht aus einem Satz eine Erinnerung. Alles hier ist freiwillig.",
+  },
+  {
+    key: "pruefen",
+    title: "Prüfen und absenden",
+    lead: "Einmal drübersehen — danach steht es auf dem Zeitstrahl.",
+  },
+] as const;
+
+const LAST_STEP = STEPS.length - 1;
+
+/** Feste Kennung je Schritt — fürs Anspringen und für aria-labelledby. */
+function panelId(index: number): string {
+  return `entry-step-${STEPS[index]?.key ?? index}`;
+}
+
+/** „10/3“ → „10-3“: Klasse/Zweig einheitlich mit Bindestrich statt Schrägstrich. */
+export function normalizeClassName(value: string) {
   return value.replace(/(\d)\s*\/\s*(\d)/g, "$1-$2");
 }
 
@@ -55,6 +108,7 @@ class FriendlyError extends Error {}
 
 /** „12.3.1996“ / „3.1996“ / „1996“ — Rekonstruktion für das Datumsfeld. */
 function entryDateText(e: Pick<Entry, "year" | "month" | "day">): string {
+  if (e.year == null) return "";
   if (e.month != null && e.day != null) return `${e.day}.${e.month}.${e.year}`;
   if (e.month != null) return `${e.month}.${e.year}`;
   return String(e.year);
@@ -73,43 +127,6 @@ function readableOn(hex: string): string {
   return luminance > 0.45 ? "var(--color-navy)" : "var(--color-paper)";
 }
 
-/** Abschnittsüberschrift: klein, in Versalien, ruhig — nur zur Orientierung. */
-function Section({
-  title,
-  first = false,
-  children,
-}: {
-  title: string;
-  first?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className={first ? undefined : "border-t border-paper-line pt-7"}>
-      <h2 className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
-        {title}
-      </h2>
-      <div className="mt-4 space-y-6">{children}</div>
-    </section>
-  );
-}
-
-function CheckIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2.2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="m4.6 10.4 3.4 3.4 7.4-7.6" />
-    </svg>
-  );
-}
-
 function AlertIcon() {
   return (
     <svg
@@ -124,6 +141,23 @@ function AlertIcon() {
       <circle cx="10" cy="10" r="7.6" />
       <path d="M10 6.1v4.6" />
       <path d="M10 13.6h.01" />
+    </svg>
+  );
+}
+
+function ArrowIcon({ back = false }: { back?: boolean }) {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-4 w-4 ${back ? "" : "-mr-0.5"}`}
+    >
+      {back ? <path d="M11.5 5 6.5 10l5 5" /> : <path d="M8.5 5l5 5-5 5" />}
     </svg>
   );
 }
@@ -195,7 +229,56 @@ async function removeQuietly(bucket: string, path: string | null) {
   }
 }
 
+/** Ein fehlendes Pflichtfeld — mit dem Feld, zu dem der Cursor springen soll. */
+interface StepProblem {
+  message: string;
+  focusId?: string;
+}
+
 type Phase = "idle" | "image" | "audio" | "saving" | "deleting";
+
+/** Eine Zeile der Zusammenfassung im letzten Schritt. */
+function SummaryRow({
+  label,
+  value,
+  muted = false,
+  onEdit,
+  editLabel,
+}: {
+  label: string;
+  value: React.ReactNode;
+  /** Leere/optionale Angaben werden ruhiger gezeichnet — sie sind kein Mangel. */
+  muted?: boolean;
+  onEdit?: () => void;
+  editLabel: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-paper-line py-2.5 last:border-0">
+      <div className="min-w-0">
+        <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+          {label}
+        </p>
+        <div
+          className={`mt-1 text-sm leading-relaxed break-words ${
+            muted ? "text-coal-faint" : "font-semibold text-coal"
+          }`}
+        >
+          {value}
+        </div>
+      </div>
+      {onEdit && (
+        <button
+          type="button"
+          className="btn-ghost min-h-11 shrink-0 px-3 text-xs"
+          onClick={onEdit}
+        >
+          Ändern
+          <span className="sr-only"> — {editLabel}</span>
+        </button>
+      )}
+    </div>
+  );
+}
 
 export interface EntryFormProps {
   session: Session;
@@ -221,10 +304,30 @@ export function EntryForm({
 }: EntryFormProps) {
   const router = useRouter();
   const isEdit = entry !== null;
+  /*
+   * Im Bearbeiten-Modus stehen ALLE Schritte offen untereinander.
+   *
+   * Wer bearbeitet, kommt mit einer klaren Absicht („die Jahreszahl stimmt
+   * nicht“) und will genau dorthin — durch fünf Schritte zu klicken wäre reine
+   * Schikane. Außerdem muss man beim Nachbessern sehen, was schon dasteht.
+   * Der geführte Ablauf hilft beim ERSTEN Erzählen; beim Korrigieren steht er
+   * im Weg.
+   */
+  const wizard = !isEdit;
+
   const titleRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const headingRefs = useRef<(HTMLHeadingElement | null)[]>([]);
 
   const [title, setTitle] = useState(entry?.title ?? "");
   const [dateText, setDateText] = useState(entry ? entryDateText(entry) : "");
+  /**
+   * „Ich weiß es“ oder „weiß ich nicht mehr“ — zwei gleichwertige Antworten.
+   * Beim Bearbeiten richtet sich die Vorauswahl danach, was gespeichert ist.
+   */
+  const [dateMode, setDateMode] = useState<DateMode>(
+    entry && entry.year == null ? "unknown" : "known"
+  );
   const [category, setCategory] = useState<CategoryId>(
     entry ? categoryById(entry.category).id : DEFAULT_CATEGORY
   );
@@ -261,12 +364,32 @@ export function EntryForm({
     null
   );
   const [error, setError] = useState<string | null>(null);
-  const [triedSubmit, setTriedSubmit] = useState(false);
   const [saved, setSaved] = useState<"created" | "updated" | null>(null);
+
+  /** Der offene Schritt. Im Bearbeiten-Modus ohne Wirkung — dort steht alles offen. */
+  const [step, setStep] = useState(0);
+  /** Schon besuchte Schritte dürfen direkt angesprungen werden. */
+  const [visited, setVisited] = useState<ReadonlySet<number>>(
+    () => new Set([0])
+  );
+  /** Richtung des letzten Wechsels — nur für die Bewegungsrichtung. */
+  const [dir, setDir] = useState<"fwd" | "back">("fwd");
+  /**
+   * Der Schritt, dessen Pflichtfelder gerade geprüft wurden. Die Meldung
+   * verschwindet dadurch von selbst, sobald der Mangel behoben ist — es gibt
+   * keinen zweiten Zustand, der nachgeführt werden müsste.
+   */
+  const [checkStep, setCheckStep] = useState<number | null>(null);
+
+  /**
+   * Ergänzen-Modus: Jemand hat gemerkt, dass es das Thema schon gibt, und
+   * schreibt jetzt dorthin statt einen zweiten Punkt anzulegen. Der eigene
+   * Entwurf bleibt dabei vollständig stehen — der Weg zurück ist einen Klick weit.
+   */
+  const [voiceTarget, setVoiceTarget] = useState<Entry | null>(null);
 
   const busy = phase !== "idle";
   const showClassField = CLASS_CATEGORIES.includes(category);
-  const titleMissing = triedSubmit && title.trim().length === 0;
 
   // Objekt-URLs der Vorschauen freigeben, sobald ein Bild aus dem Formular fällt.
   const allImages = useMemo(() => [cover, ...gallery], [cover, gallery]);
@@ -275,6 +398,12 @@ export function EntryForm({
   const existingAudioUrl = useMemo(
     () => (keepAudioPath ? publicUrl(AUDIO_BUCKET, keepAudioPath) : null),
     [keepAudioPath]
+  );
+
+  /** Das gelesene Datum — `null` heißt „ohne Datum“, nicht „ungültig“. */
+  const smartDate = useMemo(
+    () => (dateMode === "known" ? parseSmartDate(dateText) : null),
+    [dateMode, dateText]
   );
 
   /** Titelbild neu wählen — ersetzt das bisherige. */
@@ -321,6 +450,118 @@ export function EntryForm({
     setCover(picked);
   }
 
+  /* ---------------------------------------------------------------- *
+   * Schritte: prüfen, springen, ankündigen
+   * ---------------------------------------------------------------- */
+
+  /** Was fehlt in diesem Schritt noch? `null` heißt: alles gut. */
+  function stepProblem(index: number): StepProblem | null {
+    if (index === 0 && title.trim().length === 0) {
+      return {
+        message: "Bitte gib der Erinnerung zuerst einen Titel.",
+        focusId: "entry-title",
+      };
+    }
+    if (index === 1 && dateMode === "known" && parseSmartDate(dateText) === null) {
+      return {
+        message: dateText.trim()
+          ? "Dieses Datum verstehe ich noch nicht — z. B. 1996, 3.1996 oder 12.3.1996. Sonst gern „Weiß ich nicht mehr“."
+          : "Bitte ein Datum eintragen — oder „Weiß ich nicht mehr“ wählen. Beides ist gleich richtig.",
+        focusId: DATE_INPUT_ID,
+      };
+    }
+    if (index === 2 && description.length > DESCRIPTION_MAX) {
+      return {
+        message: `Die Beschreibung ist zu lang (höchstens ${DESCRIPTION_MAX} Zeichen) — bitte etwas kürzen.`,
+      };
+    }
+    if (index === 3 && gallery.length > GALLERY_MAX) {
+      return {
+        message: `Es sind höchstens ${GALLERY_MAX} weitere Bilder erlaubt — bitte ein paar entfernen.`,
+      };
+    }
+    return null;
+  }
+
+  /** Nach dem Wechsel: Cursor setzen und den Schritt in den Blick rücken. */
+  function settle(index: number, focusId?: string) {
+    window.setTimeout(() => {
+      const target = focusId
+        ? document.getElementById(focusId)
+        : headingRefs.current[index];
+      if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+
+      const gentle =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const anchor = wizard
+        ? formRef.current
+        : document.getElementById(panelId(index));
+      anchor?.scrollIntoView({
+        block: "start",
+        behavior: gentle ? "auto" : "smooth",
+      });
+    }, 0);
+  }
+
+  /** Auf einem Schritt landen, weil dort etwas fehlt. */
+  function landOn(index: number, problem: StepProblem) {
+    if (index !== step) {
+      setDir(index > step ? "fwd" : "back");
+      setStep(index);
+    }
+    setVisited((current) =>
+      current.has(index) ? current : new Set([...current, index])
+    );
+    setCheckStep(index);
+    settle(index, problem.focusId);
+  }
+
+  /**
+   * Zu einem Schritt springen. Rückwärts ist immer frei — vorwärts nur durch
+   * vollständige Schritte hindurch. Niemand soll auf Schritt 5 erfahren, dass
+   * in Schritt 1 der Titel fehlt.
+   */
+  function goTo(target: number) {
+    if (busy) return;
+    const clamped = Math.max(0, Math.min(LAST_STEP, target));
+    if (clamped === step) return;
+
+    if (clamped > step) {
+      for (let i = step; i < clamped; i++) {
+        const problem = stepProblem(i);
+        if (problem) {
+          landOn(i, problem);
+          return;
+        }
+      }
+    }
+
+    setDir(clamped > step ? "fwd" : "back");
+    setStep(clamped);
+    setVisited((current) =>
+      current.has(clamped) ? current : new Set([...current, clamped])
+    );
+    setCheckStep(null);
+    settle(clamped);
+  }
+
+  /**
+   * Enter im Formular soll weiterblättern, nicht absenden. Sonst schickt ein
+   * beherzter Druck auf der iPad-Tastatur einen halb fertigen Eintrag los.
+   */
+  function handleKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
+    if (!wizard || e.key !== "Enter" || e.shiftKey || step === LAST_STEP) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.isContentEditable) return;
+    if (target instanceof HTMLTextAreaElement) return;
+    if (target instanceof HTMLButtonElement) return;
+    if (target instanceof HTMLAnchorElement) return;
+    e.preventDefault();
+    goTo(step + 1);
+  }
+
   function failWith(message: string) {
     setError(message);
     setPhase("idle");
@@ -345,9 +586,12 @@ export function EntryForm({
     setStoredImagePaths([]);
     setStoredAudioPath(null);
     setKeepAudioPath(null);
-    setTriedSubmit(false);
+    setCheckStep(null);
     setError(null);
     setSaved(null);
+    setStep(0);
+    setDir("back");
+    setVisited(new Set([0]));
     window.scrollTo({ top: 0, behavior: "smooth" });
     window.setTimeout(() => titleRef.current?.focus(), 60);
   }
@@ -356,41 +600,26 @@ export function EntryForm({
     e.preventDefault();
     if (busy || removed) return;
 
-    setTriedSubmit(true);
     setError(null);
 
+    // Erst der komplette Durchgang: Beim ersten Mangel landet man dort, wo er
+    // steht — mit Meldung und Cursor im richtigen Feld.
+    for (let i = 0; i <= LAST_STEP; i++) {
+      const problem = stepProblem(i);
+      if (problem) {
+        landOn(i, problem);
+        return;
+      }
+    }
+
     const cleanTitle = title.trim();
-    if (!cleanTitle) {
-      failWith("Bitte einen Titel eingeben.");
-      titleRef.current?.focus();
-      return;
-    }
-
-    const smart = parseSmartDate(dateText);
-    if (!smart) {
-      failWith(
-        "Bitte ein gültiges Datum eingeben — z. B. 1996, 3.1996 oder 12.3.1996."
-      );
-      const dateEl = document.getElementById(DATE_INPUT_ID);
-      if (dateEl instanceof HTMLInputElement) dateEl.focus();
-      return;
-    }
-
-    if (gallery.length > GALLERY_MAX) {
-      failWith(
-        `Es sind höchstens ${GALLERY_MAX} weitere Bilder erlaubt — bitte ein paar entfernen.`
-      );
-      return;
-    }
-
-    // Die Datenbank lässt nicht mehr zu — hier steht wenigstens ein Satz, mit
-    // dem man etwas anfangen kann.
-    if (description.length > DESCRIPTION_MAX) {
-      failWith(
-        `Die Beschreibung ist zu lang (höchstens ${DESCRIPTION_MAX} Zeichen) — bitte etwas kürzen.`
-      );
-      return;
-    }
+    /*
+     * Ohne Datum wird ALLES leer — die Datenbank lässt einen Monat ohne Jahr
+     * ausdrücklich nicht zu (entries_month_needs_year). Weil `smart` in diesem
+     * Fall gar nicht erst existiert, kann so eine Kombination hier nicht
+     * entstehen.
+     */
+    const smart = smartDate;
 
     const uploaded: { bucket: string; path: string }[] = [];
 
@@ -459,9 +688,9 @@ export function EntryForm({
         category,
         class_name: showClassField ? normalizeClassName(className.trim()) || null : null,
         author_name: authorName.trim() || null,
-        year: smart.year,
-        month: smart.month ?? null,
-        day: smart.day ?? null,
+        year: smart?.year ?? null,
+        month: smart?.month ?? null,
+        day: smart?.day ?? null,
         ...rankFlags(rank, isAdmin),
         image_path: imagePath,
         image_paths: imagePaths,
@@ -548,50 +777,54 @@ export function EntryForm({
     }
   }
 
+  /* ---------------------------------------------------------------- *
+   * Sonderansichten: Ergänzen-Modus und Erfolgsmeldung
+   * ---------------------------------------------------------------- */
+
+  if (voiceTarget) {
+    return (
+      <VoiceForm
+        entry={voiceTarget}
+        session={session}
+        normalizeClass={normalizeClassName}
+        onBack={() => setVoiceTarget(null)}
+      />
+    );
+  }
+
   if (saved) {
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className="card animate-pop-in border-moss/30 bg-moss/8 p-7 text-center shadow-(--shadow-card-lg) sm:p-9"
+      <SuccessCard
+        title="Gespeichert!"
+        text={
+          saved === "created"
+            ? smartDate
+              ? "Der Eintrag ist jetzt live auf dem Zeitstrahl — danke fürs Erinnern."
+              : "Die Erinnerung ist jetzt live — ohne Datum steht sie in der Erinnerungs-Wolke. Danke fürs Erinnern."
+            : "Die Änderungen sind jetzt auf dem Zeitstrahl."
+        }
       >
-        <span
-          aria-hidden
-          className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-moss text-paper shadow-(--shadow-card)"
-        >
-          <CheckIcon className="h-7 w-7" />
-        </span>
-        <p className="mt-5 text-xl font-bold tracking-tight text-coal">
-          Gespeichert!
-        </p>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-coal-soft">
-          {saved === "created"
-            ? "Der Eintrag ist jetzt live auf dem Zeitstrahl — danke fürs Erinnern."
-            : "Die Änderungen sind jetzt auf dem Zeitstrahl."}
-        </p>
-        <div className="mt-7 flex flex-col gap-2.5 sm:flex-row sm:justify-center">
-          {saved === "created" ? (
-            <button
-              type="button"
-              className="btn-accent min-h-12 text-base"
-              onClick={resetForNext}
-            >
-              Weiteren Eintrag anlegen
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn-ghost min-h-12"
-              onClick={() => setSaved(null)}
-            >
-              Weiter bearbeiten
-            </button>
-          )}
-          <Link href="/" className="btn-primary min-h-12">
-            Zum Zeitstrahl
-          </Link>
-        </div>
-      </div>
+        {saved === "created" ? (
+          <button
+            type="button"
+            className="btn-accent min-h-12 text-base"
+            onClick={resetForNext}
+          >
+            Weiteren Eintrag anlegen
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-ghost min-h-12"
+            onClick={() => setSaved(null)}
+          >
+            Weiter bearbeiten
+          </button>
+        )}
+        <Link href="/" className="btn-primary min-h-12">
+          Zum Zeitstrahl
+        </Link>
+      </SuccessCard>
     );
   }
 
@@ -608,11 +841,338 @@ export function EntryForm({
             ? "Änderungen speichern"
             : "Auf den Zeitstrahl!";
 
+  const titleMissing = checkStep === 0 && title.trim().length === 0;
+  const dateSummary = smartDate
+    ? formatSmartDate(smartDate)
+    : "Ohne Datum — steht in der Erinnerungs-Wolke";
+  const descriptionPlain = richTextToPlain(description).trim();
+  const imageCount = (cover ? 1 : 0) + gallery.length;
+
+  /* ---------------------------------------------------------------- *
+   * Der Inhalt je Schritt
+   * ---------------------------------------------------------------- */
+
+  function stepContent(index: number): React.ReactNode {
+    switch (index) {
+      case 0:
+        return (
+          <>
+            {/* 1 — Titel */}
+            <div>
+              <div className="flex items-baseline justify-between gap-3">
+                <label className="label" htmlFor="entry-title">
+                  Titel <span aria-hidden className="font-bold text-fox-deep">*</span>
+                  <span className="sr-only">(Pflichtfeld)</span>
+                </label>
+                <span aria-hidden className="hint tabular-nums">
+                  noch {TITLE_MAX - title.length}
+                </span>
+              </div>
+              <input
+                id="entry-title"
+                ref={titleRef}
+                type="text"
+                className="input min-h-12"
+                placeholder="z. B. Einweihung der neuen Sporthalle"
+                maxLength={TITLE_MAX}
+                value={title}
+                disabled={busy}
+                aria-required="true"
+                aria-invalid={titleMissing}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              {/* Platz ist reserviert — die Meldung schiebt nichts nach unten. */}
+              <div className="mt-1.5 min-h-4.5">
+                {titleMissing && (
+                  <p
+                    role="alert"
+                    className="note-enter text-xs font-semibold text-ink-bad"
+                  >
+                    Bitte einen Titel eingeben.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/*
+              2 — „Gibt es das schon?“ Steht direkt unter dem Titel, weil genau
+              dort die Doppelung entsteht. Beim Bearbeiten wäre der Hinweis
+              sinnlos — man ist ja schon im richtigen Eintrag.
+            */}
+            {wizard && (
+              <SimilarPanel query={title} onChoose={(hit) => setVoiceTarget(hit)} />
+            )}
+
+            {/* 3 — Kategorie */}
+            <div>
+              <span className="label" id="entry-category-label">
+                Kategorie <span aria-hidden className="font-bold text-fox-deep">*</span>
+              </span>
+              <div
+                role="radiogroup"
+                aria-labelledby="entry-category-label"
+                className="flex flex-wrap gap-2.5"
+              >
+                {CATEGORIES.map((c) => {
+                  const active = category === c.id;
+                  const fg = readableOn(c.color);
+                  return (
+                    <label
+                      key={c.id}
+                      title={c.description}
+                      data-on={active}
+                      data-locked={busy}
+                      className={`chip chip-choice min-h-11 px-4 py-2.5 text-sm
+                        has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-fox ${
+                          busy ? "cursor-not-allowed opacity-60" : ""
+                        }`}
+                      /* Ruhend: helle Kategoriefläche mit farbigem Rahmen.
+                         Gewählt: dieselbe Farbe, aber kräftig ausgefüllt. */
+                      style={
+                        active
+                          ? {
+                              backgroundColor: c.color,
+                              borderColor: c.color,
+                              color: fg,
+                            }
+                          : categoryPillStyle(c.id)
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="entry-category"
+                        value={c.id}
+                        className="sr-only"
+                        checked={active}
+                        disabled={busy}
+                        onChange={() => setCategory(c.id)}
+                      />
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: active ? fg : c.color }}
+                      />
+                      {c.label}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="hint mt-2.5 leading-relaxed">
+                {categoryById(category).description}
+              </p>
+            </div>
+          </>
+        );
+
+      case 1:
+        return (
+          <DateChoice
+            mode={dateMode}
+            onModeChange={setDateMode}
+            value={dateText}
+            onChange={setDateText}
+            inputId={DATE_INPUT_ID}
+            disabled={busy}
+            showRequiredError={checkStep === 1}
+          />
+        );
+
+      case 2:
+        return (
+          <>
+            {/* 4 — Beschreibung mit Formatier-Werkzeugen */}
+            <RichTextInput
+              id="entry-description"
+              label="Beschreibung"
+              value={description}
+              onChange={setDescription}
+              maxLength={DESCRIPTION_MAX}
+              placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
+              disabled={busy}
+            />
+
+            {/* 5 — Autor */}
+            <div>
+              <label className="label" htmlFor="entry-author">
+                Wer erinnert sich?
+              </label>
+              <input
+                id="entry-author"
+                type="text"
+                className="input min-h-12"
+                placeholder="z. B. Maria K., Abi 1998"
+                maxLength={AUTHOR_MAX}
+                autoComplete="name"
+                value={authorName}
+                disabled={busy}
+                onChange={(e) => setAuthorName(e.target.value)}
+              />
+              <p className="hint mt-1.5">
+                Optional — der Name steht später an der Erinnerung.
+              </p>
+            </div>
+
+            {/* 6 — Klasse (nur bei Schüler/Ehemalige) */}
+            {showClassField && (
+              <div className="animate-fade-up">
+                <label className="label" htmlFor="entry-class">
+                  Klasse
+                </label>
+                <input
+                  id="entry-class"
+                  type="text"
+                  className="input min-h-12"
+                  placeholder="z. B. 8a oder Abi 1996"
+                  maxLength={CLASS_MAX}
+                  value={className}
+                  disabled={busy}
+                  onChange={(e) => setClassName(e.target.value)}
+                />
+                <p className="hint mt-1.5">
+                  Optional — damit lässt sich später nach Jahrgängen filtern.
+                </p>
+              </div>
+            )}
+          </>
+        );
+
+      case 3:
+        return (
+          <>
+            {/* 7 — Titelbild */}
+            <ImageUpload
+              value={cover}
+              onPick={pickCover}
+              onRemove={() => setCover(null)}
+              disabled={busy}
+            />
+
+            {/* 8 — Galerie */}
+            <GalleryUpload
+              items={gallery}
+              max={GALLERY_MAX}
+              hasCover={cover !== null}
+              onAdd={addToGallery}
+              onRemove={removeFromGallery}
+              onMove={moveInGallery}
+              onUseAsCover={makeCover}
+              disabled={busy}
+            />
+
+            {/* 9 — Audio (nur Admin) */}
+            {isAdmin && (
+              <AudioUpload
+                value={audio}
+                onChange={setAudio}
+                existingUrl={existingAudioUrl}
+                onRemoveExisting={() => setKeepAudioPath(null)}
+                disabled={busy}
+              />
+            )}
+          </>
+        );
+
+      default:
+        return (
+          <>
+            {/*
+              10 — Zusammenfassung: genau eine Zeile je vorangegangenem
+              Schritt. Eine Zeile pro Feld wäre ehrlicher, würde die Karte auf
+              dem Handy aber über zwei Bildschirme strecken — und man denkt
+              ohnehin in Schritten, nicht in Feldern.
+            */}
+            <div className="rounded-xl border border-paper-line bg-paper-sunk px-4 py-1">
+              <SummaryRow
+                label="Worum es geht"
+                value={
+                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                    <span>{title.trim() || "Ohne Titel"}</span>
+                    <span
+                      className="chip cursor-default"
+                      style={categoryPillStyle(category)}
+                    >
+                      {categoryById(category).label}
+                    </span>
+                  </span>
+                }
+                muted={!title.trim()}
+                editLabel="Schritt 1"
+                onEdit={wizard ? () => goTo(0) : undefined}
+              />
+              <SummaryRow
+                label="Wann"
+                value={dateSummary}
+                muted={!smartDate}
+                editLabel="Schritt 2"
+                onEdit={wizard ? () => goTo(1) : undefined}
+              />
+              <SummaryRow
+                label="Erzählung"
+                value={
+                  <>
+                    <span className={descriptionPlain ? "" : "text-coal-faint"}>
+                      {descriptionPlain
+                        ? `${descriptionPlain.slice(0, 140)}${descriptionPlain.length > 140 ? " …" : ""}`
+                        : "Noch nichts geschrieben"}
+                    </span>
+                    {/* Die Klasse steht hier schon so, wie sie gespeichert wird. */}
+                    <span className="mt-0.5 block font-normal text-coal-soft">
+                      {[
+                        authorName.trim(),
+                        showClassField
+                          ? normalizeClassName(className.trim())
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Ohne Namen"}
+                    </span>
+                  </>
+                }
+                muted={!descriptionPlain && !authorName.trim()}
+                editLabel="Schritt 3"
+                onEdit={wizard ? () => goTo(2) : undefined}
+              />
+              <SummaryRow
+                label="Bild und Ton"
+                value={
+                  imageCount === 0 && !audio && !keepAudioPath
+                    ? "Keine Bilder"
+                    : [
+                        imageCount === 1
+                          ? "1 Bild"
+                          : imageCount > 1
+                            ? `${imageCount} Bilder`
+                            : "",
+                        audio || keepAudioPath ? "Tonaufnahme" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
+                }
+                muted={imageCount === 0 && !audio && !keepAudioPath}
+                editLabel="Schritt 4"
+                onEdit={wizard ? () => goTo(3) : undefined}
+              />
+            </div>
+
+            {/* 11 — Rangstufe: normal · wichtig · Meilenstein (nur Admin) */}
+            <RankChoice
+              value={rank}
+              onChange={setRank}
+              allowMilestone={isAdmin}
+              disabled={busy}
+            />
+          </>
+        );
+    }
+  }
+
   return (
     <form
       noValidate
+      ref={formRef}
       onSubmit={(e) => void handleSubmit(e)}
-      className="card animate-fade-up space-y-8 p-5 shadow-(--shadow-card-lg) sm:p-7"
+      onKeyDown={handleKeyDown}
+      className="card animate-fade-up space-y-7 p-5 shadow-(--shadow-card-lg) sm:p-7"
     >
       {error && (
         <div
@@ -624,234 +1184,136 @@ export function EntryForm({
         </div>
       )}
 
-      <Section title="Die Erinnerung" first>
-        {/* 1 — Titel */}
-        <div>
-          <div className="flex items-baseline justify-between gap-3">
-            <label className="label" htmlFor="entry-title">
-              Titel <span aria-hidden className="font-bold text-fox-deep">*</span>
-              <span className="sr-only">(Pflichtfeld)</span>
-            </label>
-            <span aria-hidden className="hint tabular-nums">
-              noch {TITLE_MAX - title.length}
-            </span>
-          </div>
-          <input
-            id="entry-title"
-            ref={titleRef}
-            type="text"
-            className="input min-h-12"
-            placeholder="z. B. Einweihung der neuen Sporthalle"
-            maxLength={TITLE_MAX}
-            value={title}
+      {wizard && (
+        <>
+          <StepProgress
+            steps={STEPS}
+            current={step}
+            visited={visited}
+            onGo={goTo}
             disabled={busy}
-            aria-required="true"
-            aria-invalid={titleMissing}
-            onChange={(e) => setTitle(e.target.value)}
           />
-          {/* Platz ist reserviert — die Meldung schiebt nichts nach unten. */}
-          <div className="mt-1.5 min-h-4.5">
-            {titleMissing && (
-              <p
-                role="alert"
-                className="note-enter text-xs font-semibold text-ink-bad"
-              >
-                Bitte einen Titel eingeben.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* 2 — Datum */}
-        <SmartDateInput
-          id={DATE_INPUT_ID}
-          value={dateText}
-          onChange={setDateText}
-          disabled={busy}
-          showRequiredError={triedSubmit}
-        />
-      </Section>
-
-      <Section title="Einordnung">
-        {/* 3 — Kategorie */}
-        <div>
-          <span className="label" id="entry-category-label">
-            Kategorie <span aria-hidden className="font-bold text-fox-deep">*</span>
-          </span>
-          <div
-            role="radiogroup"
-            aria-labelledby="entry-category-label"
-            className="flex flex-wrap gap-2.5"
-          >
-            {CATEGORIES.map((c) => {
-              const active = category === c.id;
-              const fg = readableOn(c.color);
-              return (
-                <label
-                  key={c.id}
-                  title={c.description}
-                  data-on={active}
-                  data-locked={busy}
-                  className={`chip chip-choice min-h-11 px-4 py-2.5 text-sm
-                    has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-fox ${
-                      busy ? "cursor-not-allowed opacity-60" : ""
-                    }`}
-                  /* Ruhend: helle Kategoriefläche mit farbigem Rahmen.
-                     Gewählt: dieselbe Farbe, aber kräftig ausgefüllt. */
-                  style={
-                    active
-                      ? {
-                          backgroundColor: c.color,
-                          borderColor: c.color,
-                          color: fg,
-                        }
-                      : categoryPillStyle(c.id)
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="entry-category"
-                    value={c.id}
-                    className="sr-only"
-                    checked={active}
-                    disabled={busy}
-                    onChange={() => setCategory(c.id)}
-                  />
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: active ? fg : c.color }}
-                  />
-                  {c.label}
-                </label>
-              );
-            })}
-          </div>
-          <p className="hint mt-2.5 leading-relaxed">
-            {categoryById(category).description}
+          {/* Für Screenreader: Der Titel des Schritts kommt über den Fokus. */}
+          <p aria-live="polite" className="sr-only">
+            Schritt {step + 1} von {STEPS.length}
           </p>
-        </div>
-
-        {/* 4 — Rangstufe: normal · wichtig · Meilenstein (nur Admin) */}
-        <RankChoice
-          value={rank}
-          onChange={setRank}
-          allowMilestone={isAdmin}
-          disabled={busy}
-        />
-
-        {/* 5 — Klasse (nur bei Schüler/Ehemalige) */}
-        {showClassField && (
-          <div className="animate-fade-up">
-            <label className="label" htmlFor="entry-class">
-              Klasse
-            </label>
-            <input
-              id="entry-class"
-              type="text"
-              className="input min-h-12"
-              placeholder="z. B. 8a oder Abi 1996"
-              maxLength={CLASS_MAX}
-              value={className}
-              disabled={busy}
-              onChange={(e) => setClassName(e.target.value)}
-            />
-            <p className="hint mt-1.5">
-              Optional — damit lässt sich später nach Jahrgängen filtern.
-            </p>
-          </div>
-        )}
-      </Section>
-
-      <Section title="Erzählung">
-        {/* 6 — Autor */}
-        <div>
-          <label className="label" htmlFor="entry-author">
-            Wer erinnert sich?
-          </label>
-          <input
-            id="entry-author"
-            type="text"
-            className="input min-h-12"
-            placeholder="z. B. Maria K., Abi 1998"
-            maxLength={AUTHOR_MAX}
-            autoComplete="name"
-            value={authorName}
-            disabled={busy}
-            onChange={(e) => setAuthorName(e.target.value)}
-          />
-          <p className="hint mt-1.5">
-            Optional — der Name steht später an der Erinnerung.
-          </p>
-        </div>
-
-        {/* 7 — Beschreibung mit Formatier-Werkzeugen */}
-        <RichTextInput
-          id="entry-description"
-          label="Beschreibung"
-          value={description}
-          onChange={setDescription}
-          maxLength={DESCRIPTION_MAX}
-          placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
-          disabled={busy}
-        />
-      </Section>
-
-      <Section title="Bilder">
-        {/* 8 — Titelbild */}
-        <ImageUpload
-          value={cover}
-          onPick={pickCover}
-          onRemove={() => setCover(null)}
-          disabled={busy}
-        />
-
-        {/* 9 — Galerie */}
-        <GalleryUpload
-          items={gallery}
-          max={GALLERY_MAX}
-          hasCover={cover !== null}
-          onAdd={addToGallery}
-          onRemove={removeFromGallery}
-          onMove={moveInGallery}
-          onUseAsCover={makeCover}
-          disabled={busy}
-        />
-      </Section>
-
-      {/* 10 — Audio (nur Admin) */}
-      {isAdmin && (
-        <Section title="Ton">
-          <AudioUpload
-            value={audio}
-            onChange={setAudio}
-            existingUrl={existingAudioUrl}
-            onRemoveExisting={() => setKeepAudioPath(null)}
-            disabled={busy}
-          />
-        </Section>
+        </>
       )}
 
-      {/* Absenden */}
-      <div className="border-t border-paper-line pt-7">
-        <button
-          type="submit"
-          className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
-          disabled={busy || removed}
-        >
-          {busy && phase !== "deleting" && (
-            <span
-              aria-hidden
-              className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
-            />
-          )}
-          {submitLabel}
-        </button>
-        <p className="hint mt-3">
+      <div className="step-flow" data-dir={wizard ? dir : undefined}>
+        {STEPS.map((definition, index) => {
+          const problem = checkStep === index ? stepProblem(index) : null;
+          const open = !wizard || index === step;
+          return (
+            <section
+              key={definition.key}
+              id={panelId(index)}
+              hidden={!open}
+              className={
+                wizard
+                  ? "step-panel"
+                  : "step-panel border-t border-paper-line pt-7 first:border-0 first:pt-0"
+              }
+              aria-labelledby={`${panelId(index)}-title`}
+            >
+              <h2
+                id={`${panelId(index)}-title`}
+                ref={(node) => {
+                  headingRefs.current[index] = node;
+                }}
+                tabIndex={-1}
+                className="text-lg font-bold tracking-tight text-coal outline-none sm:text-xl"
+              >
+                {definition.title}
+              </h2>
+              <p className="hint mt-1 leading-relaxed">{definition.lead}</p>
+
+              <div className="mt-5 space-y-6">{stepContent(index)}</div>
+
+              {problem && (
+                <p
+                  role="alert"
+                  className="note-enter mt-5 flex items-start gap-2.5 rounded-xl border border-brick/25 bg-brick/8 p-3.5 text-sm font-semibold text-ink-bad"
+                >
+                  <AlertIcon />
+                  <span>{problem.message}</span>
+                </p>
+              )}
+
+              {wizard && (
+                <div className="mt-7 flex items-center gap-2.5 border-t border-paper-line pt-6">
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-12 shrink-0"
+                      disabled={busy}
+                      onClick={() => goTo(index - 1)}
+                    >
+                      <ArrowIcon back />
+                      Zurück
+                    </button>
+                  )}
+                  {index < LAST_STEP ? (
+                    <button
+                      type="button"
+                      className="btn-accent min-h-12 flex-1 text-base"
+                      disabled={busy}
+                      onClick={() => goTo(index + 1)}
+                    >
+                      Weiter
+                      <ArrowIcon />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="btn-accent min-h-12 flex-1 text-base"
+                      disabled={busy || removed}
+                    >
+                      {busy && phase !== "deleting" && (
+                        <span
+                          aria-hidden
+                          className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
+                        />
+                      )}
+                      {submitLabel}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      {/* Im Bearbeiten-Modus steht der Absende-Knopf einmal unter allem. */}
+      {!wizard && (
+        <div className="border-t border-paper-line pt-7">
+          <button
+            type="submit"
+            className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
+            disabled={busy || removed}
+          >
+            {busy && phase !== "deleting" && (
+              <span
+                aria-hidden
+                className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
+              />
+            )}
+            {submitLabel}
+          </button>
+          <p className="hint mt-3">
+            Mit <span className="font-bold text-fox-deep">*</span> markierte
+            Felder sind Pflichtfelder.
+          </p>
+        </div>
+      )}
+
+      {wizard && step === LAST_STEP && (
+        <p className="hint">
           Mit <span className="font-bold text-fox-deep">*</span> markierte Felder
           sind Pflichtfelder.
         </p>
-      </div>
+      )}
 
       {isEdit && isAdmin && (
         <div className="border-t border-paper-line pt-7">
