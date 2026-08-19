@@ -103,9 +103,15 @@ export function formatSmartDate(d: SmartDate): string {
   return String(d.year);
 }
 
+/**
+ * Einträge ohne Jahr gibt es bewusst („weiß ich nicht mehr“) — die stehen
+ * nicht auf der Achse, sondern in der Erinnerungs-Wolke. Deshalb liefert das
+ * hier `null` statt einer erfundenen Jahreszahl.
+ */
 export function entryToSmartDate(
   e: Pick<Entry, "year" | "month" | "day">
-): SmartDate {
+): SmartDate | null {
+  if (e.year == null) return null;
   return {
     year: e.year,
     ...(e.month != null ? { month: e.month } : {}),
@@ -113,10 +119,12 @@ export function entryToSmartDate(
   };
 }
 
+/** Datumstext eines Eintrags — leer, wenn kein Datum bekannt ist. */
 export function formatEntryDate(
   e: Pick<Entry, "year" | "month" | "day">
 ): string {
-  return formatSmartDate(entryToSmartDate(e));
+  const d = entryToSmartDate(e);
+  return d ? formatSmartDate(d) : "";
 }
 
 /**
@@ -138,10 +146,20 @@ export function yearFraction(d: SmartDate): number {
   return d.year + 0.5;
 }
 
+/**
+ * Position eines Eintrags auf der Achse.
+ *
+ * Einträge ohne Jahr haben dort keinen Platz — sie leben in der
+ * Erinnerungs-Wolke und werden ausgefiltert, bevor das Layout sie sieht
+ * (siehe `splitByDate`). Sollte doch einer durchrutschen, liefert die
+ * Funktion NaN: Damit fällt er aus jedem Vergleich heraus und verschwindet,
+ * statt bei einer erfundenen Jahreszahl aufzutauchen.
+ */
 export function entryYearFraction(
   e: Pick<Entry, "year" | "month" | "day">
 ): number {
-  return yearFraction(entryToSmartDate(e));
+  const d = entryToSmartDate(e);
+  return d ? yearFraction(d) : Number.NaN;
 }
 
 /** Heutiges Datum als Bruchteil-Jahr (rechter Rand des Zeitstrahls). */

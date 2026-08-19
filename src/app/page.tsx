@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SchoolMark from "@/components/SchoolMark";
 import { nowYearFraction } from "@/lib/dates";
+import { splitByDate } from "@/lib/entryGroups";
 import { timelineDomain } from "@/lib/timelinePosition";
 import type { Entry } from "@/lib/types";
 import { upsertEntry, useEntries } from "@/hooks/useEntries";
 import { useRealtimeEntries } from "@/hooks/useRealtimeEntries";
+import { useVoices } from "@/hooks/useVoices";
 import { useSettings } from "@/hooks/useSettings";
 import FilterBar, {
   INITIAL_FILTER,
@@ -80,6 +82,7 @@ function matchesFilter(entry: Entry, filter: FilterState): boolean {
 
 export default function Home() {
   const { entries, setEntries, loading, error, refetch } = useEntries();
+  const { index: voiceIndex, refetchEntry: refetchVoices } = useVoices();
   const [filter, setFilter] = useState<FilterState>(INITIAL_FILTER);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
 
@@ -100,12 +103,27 @@ export default function Home() {
   pendingRef.current = pending;
 
   const now = useMemo(() => nowYearFraction(), []);
-  // Gesamtbereich aus ALLEN Einträgen — Filter sollen die Achse nicht verschieben.
-  const domain = useMemo(() => timelineDomain(entries, now), [entries, now]);
+
+  /*
+   * Erinnerungen mit und ohne Jahreszahl gehen hier auseinander. Auf die Achse
+   * kommt nur, was ein Datum hat — alles andere sammelt sich in der Wolke
+   * darunter. Getrennt wird VOR dem Filter, damit die Achse nicht plötzlich
+   * andere Grenzen bekommt, bloß weil jemand eine Kategorie anklickt.
+   */
+  const { dated, undated } = useMemo(() => splitByDate(entries), [entries]);
+
+  // Gesamtbereich aus allen DATIERTEN Einträgen.
+  const domain = useMemo(() => timelineDomain(dated, now), [dated, now]);
 
   const filtered = useMemo(
-    () => entries.filter((entry) => matchesFilter(entry, filter)),
-    [entries, filter]
+    () => dated.filter((entry) => matchesFilter(entry, filter)),
+    [dated, filter]
+  );
+
+  /** Die datumslosen Erinnerungen — vom selben Filter erfasst. */
+  const filteredUndated = useMemo(
+    () => undated.filter((entry) => matchesFilter(entry, filter)),
+    [undated, filter]
   );
 
   const classOptions = useMemo(() => {
@@ -120,6 +138,12 @@ export default function Home() {
       a.localeCompare(b, "de", { numeric: true, sensitivity: "base" })
     );
   }, [entries, filter.category]);
+
+  /** Wie viele Menschen hängen an diesem Thema? Der Zähler an Pille und Wolke. */
+  const voiceCount = useCallback(
+    (entryId: string) => voiceIndex.count(entryId),
+    [voiceIndex]
+  );
 
   /** Fliegt zu einem Eintrag; blendet dafür nötigenfalls den Filter aus. */
   const focusEntry = useCallback((entry: Entry) => {
@@ -195,6 +219,10 @@ export default function Home() {
     onUpsert: handleUpsert,
     onRemove: handleRemove,
     onInserted: handleInserted,
+    // Ergänzt jemand eine Erinnerung, wächst die Zahl am Thema mit — ohne
+    // dass deshalb die Kamera losfliegt: Es ist kein neuer Ort, nur eine
+    // weitere Stimme am selben.
+    onVoiceChanged: refetchVoices,
   });
 
   // Wird die Übertragung abgeschaltet, verschwindet auch die Warteschlange:
@@ -219,7 +247,7 @@ export default function Home() {
         filter={filter}
         onChange={setFilter}
         classOptions={classOptions}
-        count={filtered.length}
+        count={filtered.length + filteredUndated.length}
       />
 
       <div
