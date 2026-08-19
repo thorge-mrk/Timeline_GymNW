@@ -5,18 +5,24 @@
  *
  * Vorher hat das Formular jeden Beitrag gleich behandelt und irgendwann nach
  * einem Datum gefragt. Für „Sommerkonzert am 15. Juni 2026“ ist das genau
- * richtig — für „Pausen mit meinen Freunden“ ist es eine Frage, auf die es
- * keine Antwort gibt. Wer sie trotzdem gestellt bekommt, denkt, er habe etwas
- * falsch gemacht.
+ * richtig — für „Pausen mit Freunden“ ist es eine Frage, auf die es keine
+ * Antwort gibt. Wer sie trotzdem gestellt bekommt, denkt, er habe etwas falsch
+ * gemacht.
  *
  * Deshalb steht die Weiche jetzt ganz vorne, ausdrücklich und in zwei gleich
  * großen Karten: ein Ereignis für die Zeitachse oder ein Moment für die
  * Erinnerungs-Wolke. Keine der beiden Karten ist die Hauptsache und die andere
  * der Sonderfall — beides sind Schulgeschichte, nur an verschiedenen Orten.
  *
- * Die Beispiele stehen bewusst mit dabei. „Ereignis“ und „Moment“ sind Wörter,
- * unter denen sich jeder etwas anderes vorstellt; „Berlinfahrt im April 2026“
- * dagegen ist eindeutig.
+ * Der Unterschied steht in den Beispielen, nicht in der Erklärung: Ein
+ * Fünftklässler liest keine Definition, er sucht das, was seinem Fall ähnelt.
+ * Deshalb hier ausschließlich echte Fälle aus dem Bestand — und ausdrücklich
+ * KEINE, die es in beiden Spalten geben könnte. „Der Amerika-Austausch“ stand
+ * früher bei den Momenten und steht zugleich mit Jahr auf dem Zeitstrahl; wer
+ * ihn dort las, konnte sich nur falsch entscheiden.
+ *
+ * Die Trennlinie in einem Satz: Steht ein Tag oder ein Monat dabei, ist es ein
+ * Ereignis. Ist es eine Erinnerung ohne Datum, ist es ein Moment.
  */
 
 export type EntryKind = "ereignis" | "moment";
@@ -71,24 +77,24 @@ const OPTIONS: readonly Option[] = [
   {
     id: "ereignis",
     title: "Ereignis für den Zeitstrahl",
-    lead: "Etwas, das an einem bestimmten Zeitpunkt passiert ist und zur Schulgeschichte gehört.",
+    lead: "Etwas ist an einem Tag oder in einem Monat passiert — du weißt ungefähr, wann.",
     examples: [
       "Sommerkonzert am 15. Juni 2026",
       "Fußballturnier des 7. Jahrgangs",
-      "Berlinfahrt im April 2026",
       "Beginn der Bienen-AG",
+      "50 Jahre GymNW",
     ],
     icon: <TimelineIcon />,
   },
   {
     id: "moment",
     title: "Bester Moment / Erlebnis",
-    lead: "Eine persönliche Erinnerung — schön, auch ohne Datum. Landet in der Erinnerungs-Wolke.",
+    lead: "Eine Erinnerung von dir, ganz ohne Datum. Sie kommt in die Erinnerungs-Wolke.",
     examples: [
+      "Pausen mit Freunden",
+      "Die Bläserklasse",
       "Meine Einschulung",
-      "Bläserklasse",
-      "Pausen mit meinen Freunden",
-      "Der Amerika-Austausch",
+      "Klassenfahrt",
     ],
     icon: <CloudIcon />,
   },

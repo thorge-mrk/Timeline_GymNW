@@ -15,8 +15,7 @@ import { formatSmartDate, parseSmartDate } from "@/lib/dates";
 import { richTextToPlain } from "@/lib/richText";
 import { publicUrl, supabase } from "@/lib/supabase";
 import type { Entry, EntryInsert } from "@/lib/types";
-import { AudioUpload, type PreparedAudio } from "./AudioUpload";
-import { ConsentCheck } from "./ConsentCheck";
+import { ConsentNote } from "./ConsentNote";
 import { DateChoice, type DateMode } from "./DateChoice";
 import { GalleryUpload } from "./GalleryUpload";
 import { ImageUpload } from "./ImageUpload";
@@ -30,18 +29,21 @@ import {
   type ImageItem,
   type PreparedImage,
 } from "./imageItems";
-import {
-  RankChoice,
-  rankFlags,
-  rankOf,
-  type EntryRank,
-} from "./RankChoice";
+import { RankChoice, milestoneOf } from "./RankChoice";
 import { RichTextInput } from "./RichTextInput";
 import { SimilarPanel } from "./SimilarPanel";
 import { StepProgress, type StepDef } from "./StepProgress";
 import { SuccessCard } from "./SuccessCard";
 import { VoiceForm } from "./VoiceForm";
 
+/*
+ * Tonaufnahmen kann über dieses Formular niemand mehr hochladen — die Schule
+ * braucht sie nicht, also gibt es das Feld nicht mehr. Die Spalte audio_path
+ * bleibt trotzdem: Was früher aufgenommen wurde, spielt das Detail-Fenster
+ * weiter ab. Hier taucht der Eimer deshalb nur noch an einer Stelle auf, beim
+ * Löschen eines Eintrags — eine gelöschte Erinnerung soll keine Tonspur mit
+ * echten Stimmen im öffentlichen Speicher zurücklassen.
+ */
 const AUDIO_BUCKET = "entry-audio";
 
 const TITLE_MAX = 120;
@@ -66,25 +68,36 @@ interface FormStep extends StepDef {
 }
 
 /**
- * Der geführte Ablauf — und zwar in ZWEI Längen.
+ * Der geführte Ablauf — und zwar in VIER Längen, je nach Weg und Rolle.
  *
  * Vorher war das eine einzige lange Seite mit zehn Feldern. Vor einem
  * Menschen, der in der Pause dreißig Sekunden Zeit hat, ist das zu viel auf
  * einmal — man sieht die Menge und nicht die Frage. Jetzt steht auf jedem
  * Bildschirm genau eine Frage, und man weiß immer, wie viel noch kommt.
  *
- * Ganz vorne steht seit Neuestem die Weiche: Ereignis oder bester Moment?
- * Danach folgt der Rest dem, wie Menschen erzählen — erst WAS, dann WANN, dann
- * die Geschichte, dann die Bilder, am Ende einmal drübersehen.
+ * Ganz vorne steht die Weiche: Ereignis oder bester Moment? Danach folgt der
+ * Rest dem, wie Menschen erzählen — erst WAS, dann WANN, dann die Geschichte,
+ * und am Schluss: wer erzählt das eigentlich.
  *
- * Der Moment-Weg lässt WANN und die Bilder weg. Nicht aus Sparsamkeit: Ein
- * Datum gibt es dort schlicht nicht („Pausen mit meinen Freunden“), und ein
- * Wolken-Eintrag ist ein Wort, kein bebilderter Bericht. Vier Schritte statt
- * sechs — wer nur „Bläserklasse“ beitragen will, ist in einer halben Minute
- * fertig.
+ * Für Eintrag-Konten ist der Weg jetzt so kurz wie irgend möglich:
  *
- * „Bild und Ton“ gibt es nur für Admin-Konten. Die Datenschutzerklärung sagt
- * zu, dass Fotos ausschließlich vom Projektteam ergänzt werden, und die
+ *   bester Moment  →  Art · Woran erinnerst du dich? · Wer erinnert sich?
+ *   Ereignis       →  Art · Was ist passiert? · Wann? · Erzähl kurz davon
+ *
+ * Drei bzw. vier Schritte statt vier bzw. fünf. Zwei Dinge sind dafür
+ * zusammengerückt, und beide aus demselben Grund — sie sind EINE Frage:
+ *   * Beim Moment steht der kurze Satz gleich beim Wort. „Pausen mit Freunden“
+ *     und „Wir saßen jede Pause auf der Mauer“ trennt niemand in zwei Schritte.
+ *   * Die Kategorie ist keine Sortierarbeit, sondern die Frage „wer erzählt
+ *     das?“ — sie gehört zum Namen und zur Klasse, nicht zum Titel.
+ *
+ * Der Prüfschritt am Ende gibt es nur noch für Admin-Konten. Für ein
+ * Eintrag-Konto war er eine Zwischenseite vor dem Ziel — und seit es
+ * „Deine letzten Einträge“ gibt, ist ein Tippfehler kein Drama mehr, sondern
+ * zwei Klicks. Was veröffentlicht wird, steht trotzdem über dem Knopf.
+ *
+ * „Bilder“ gibt es ebenfalls nur für Admin-Konten. Die Datenschutzerklärung
+ * sagt zu, dass Fotos ausschließlich vom Projektteam ergänzt werden, und die
  * Datenbank hält sich daran (Policy images_insert_admin, RLS auf image_path).
  * Ein Schritt, der beim Speichern abgewiesen würde, wäre ein Versprechen, das
  * das Formular nicht halten kann — deshalb fällt er ganz weg statt leer
@@ -94,42 +107,42 @@ interface FormStep extends StepDef {
 function stepsFor(
   kind: EntryKind,
   wizard: boolean,
-  canUpload: boolean
+  isAdmin: boolean
 ): readonly FormStep[] {
   const worum: FormStep =
     kind === "moment"
       ? {
           key: "worum",
-          title: "Wie heißt dein Moment?",
-          lead: "Ein Wort oder ein kurzer Titel genügt — genau so steht er später in der Wolke.",
+          title: "Woran erinnerst du dich?",
+          lead: "Ein Wort reicht schon. Ein Satz dazu ist schön, aber freiwillig.",
         }
       : {
           key: "worum",
-          title: "Worum geht es?",
-          lead: "Gib dem Ereignis einen Namen — und sag, zu wem es gehört.",
+          title: "Was ist passiert?",
+          lead: "Gib dem Ereignis einen kurzen Namen.",
         };
 
   const erzaehlen: FormStep =
     kind === "moment"
       ? {
           key: "erzaehlen",
-          title: "Erzähl kurz davon",
-          lead: "Ein, zwei Sätze — oder auch gar keine. Hier ist alles freiwillig.",
+          title: "Wer erinnert sich?",
+          lead: "Sag kurz, wer du bist. Deinen Namen darfst du auch weglassen.",
         }
       : {
           key: "erzaehlen",
-          title: "Erzähl davon",
-          lead: "Was ist passiert? Und wer erinnert sich daran?",
+          title: "Erzähl kurz davon",
+          lead: "Zwei, drei Sätze reichen — und sag kurz, wer du bist.",
         };
 
   const wann: FormStep = {
     key: "wann",
     title: "Wann war das?",
-    lead: "Das Jahr genügt. Und wenn du es nicht mehr weißt, ist das genauso richtig.",
+    lead: "Das Jahr reicht. Und wenn du es nicht mehr weißt, ist das auch gut.",
   };
   const medien: FormStep = {
     key: "medien",
-    title: "Bild und Ton",
+    title: "Bilder",
     lead: "Ein Foto macht aus einem Satz eine Erinnerung. Alles hier ist freiwillig.",
   };
   const pruefen: FormStep = {
@@ -141,24 +154,41 @@ function stepsFor(
         : "Einmal drübersehen — danach steht es auf dem Zeitstrahl.",
   };
 
-  // Beim Bearbeiten steht ohnehin alles offen untereinander; die Frage nach der
-  // Art wäre dort sinnlos, denn der Eintrag existiert längst.
+  /*
+   * Beim Bearbeiten steht ohnehin alles offen untereinander; die Frage nach der
+   * Art wäre dort sinnlos, denn der Eintrag existiert längst. Und weil man
+   * beim Bearbeiten nicht weiß, ob vor einem ein Ereignis oder eine Erinnerung
+   * ohne Datum liegt, fragen die Überschriften hier neutral: „Wie heißt das
+   * Ereignis?“ über „Pausen mit Freunden“ wäre schlicht falsch.
+   */
   if (!wizard) {
-    return canUpload
-      ? [worum, wann, erzaehlen, medien, pruefen]
-      : [worum, wann, erzaehlen, pruefen];
+    const worumEdit: FormStep = {
+      key: "worum",
+      title: "Worum geht es?",
+      lead: "Der Titel, so wie er auf der Seite steht.",
+    };
+    const erzaehlenEdit: FormStep = {
+      key: "erzaehlen",
+      title: "Der Text dazu",
+      lead: "Was passiert ist — und wer sich erinnert.",
+    };
+    return isAdmin
+      ? [worumEdit, wann, erzaehlenEdit, medien, pruefen]
+      : [worumEdit, wann, erzaehlenEdit];
   }
 
   const art: FormStep = {
     key: "art",
-    title: "Was möchtest du beitragen?",
-    lead: "Beides gehört zur Schulgeschichte — die Wahl bestimmt nur, wonach wir gleich fragen.",
+    title: "Was möchtest du eintragen?",
+    lead: "Beides ist willkommen — such einfach aus, was besser passt.",
   };
 
-  if (kind === "moment") return [art, worum, erzaehlen, pruefen];
-  return canUpload
+  if (kind === "moment") {
+    return isAdmin ? [art, worum, erzaehlen, pruefen] : [art, worum, erzaehlen];
+  }
+  return isAdmin
     ? [art, worum, wann, erzaehlen, medien, pruefen]
-    : [art, worum, wann, erzaehlen, pruefen];
+    : [art, worum, wann, erzaehlen];
 }
 
 /** Feste Kennung je Schritt — fürs Anspringen und für aria-labelledby. */
@@ -257,14 +287,15 @@ function describeDbError(raw: string): string {
   return `Speichern fehlgeschlagen: ${raw}`;
 }
 
-function describeUploadError(raw: string, kind: "Bild" | "Audio"): string {
+/** Hochgeladen wird nur noch das eine: Bilder, und die nur vom Projektteam. */
+function describeUploadError(raw: string): string {
   const m = raw.toLowerCase();
   if (
     m.includes("row-level security") ||
     m.includes("unauthorized") ||
     m.includes("403")
   ) {
-    return `Keine Berechtigung zum Hochladen (${kind}) — ist das Konto richtig eingerichtet?`;
+    return "Keine Berechtigung zum Hochladen — ist das Konto richtig eingerichtet?";
   }
   if (
     m.includes("maximum allowed size") ||
@@ -272,13 +303,13 @@ function describeUploadError(raw: string, kind: "Bild" | "Audio"): string {
     m.includes("413") ||
     m.includes("too large")
   ) {
-    return `Die Datei ist zu groß für den Upload (${kind}).`;
+    return "Das Bild ist zu groß für den Upload.";
   }
   if (m.includes("mime") || m.includes("not supported")) {
-    return `Dieses Dateiformat wird nicht akzeptiert (${kind}).`;
+    return "Dieses Bildformat wird nicht akzeptiert.";
   }
   if (looksLikeNetworkError(m)) return NETWORK_MESSAGE;
-  return `Der Upload ist fehlgeschlagen (${kind}): ${raw}`;
+  return `Der Upload ist fehlgeschlagen: ${raw}`;
 }
 
 function describeUnexpected(err: unknown): string {
@@ -303,7 +334,7 @@ interface StepProblem {
   focusId?: string;
 }
 
-type Phase = "idle" | "image" | "audio" | "saving" | "deleting";
+type Phase = "idle" | "image" | "saving" | "deleting";
 
 /** Eine Zeile der Zusammenfassung im letzten Schritt. */
 function SummaryRow({
@@ -416,7 +447,12 @@ export function EntryForm({
   const [category, setCategory] = useState<CategoryId>(
     entry ? categoryById(entry.category).id : DEFAULT_CATEGORY
   );
-  const [rank, setRank] = useState<EntryRank>(() => rankOf(entry));
+  /**
+   * Meilenstein — das Häkchen gibt es nur beim Bearbeiten und nur für
+   * Admin-Konten. Beim Anlegen bleibt es immer aus: Kein Eintrag wird zum
+   * Meilenstein, weil jemand ein Kästchen gefunden hat.
+   */
+  const [milestone, setMilestone] = useState(() => milestoneOf(entry));
   const [className, setClassName] = useState(entry?.class_name ?? "");
   const [authorName, setAuthorName] = useState(entry?.author_name ?? "");
   const [description, setDescription] = useState(entry?.description ?? "");
@@ -427,13 +463,6 @@ export function EntryForm({
    * rückwärts ins Minus.
    */
   const [momentText, setMomentText] = useState("");
-  /**
-   * Die Einwilligung im letzten Schritt. Sie gehört zu genau diesem Beitrag —
-   * nach dem Speichern wird sie deshalb wieder abgefragt.
-   */
-  const [consent, setConsent] = useState(false);
-  /** Erst nach einem Absende-Versuch die Meldung zeigen. */
-  const [consentTried, setConsentTried] = useState(false);
 
   /** Titelbild (image_path) — neu gewählt oder schon gespeichert. */
   const [cover, setCover] = useState<ImageItem | null>(() =>
@@ -443,7 +472,6 @@ export function EntryForm({
   const [gallery, setGallery] = useState<ImageItem[]>(() =>
     (entry?.image_paths ?? []).map((path) => storedImageItem(path))
   );
-  const [audio, setAudio] = useState<PreparedAudio | null>(null);
   /** In der Datenbank aktuell gespeicherte Pfade. */
   const [storedImagePath, setStoredImagePath] = useState(
     entry?.image_path ?? null
@@ -451,11 +479,6 @@ export function EntryForm({
   const [storedImagePaths, setStoredImagePaths] = useState<string[]>(
     entry?.image_paths ?? []
   );
-  const [storedAudioPath, setStoredAudioPath] = useState(
-    entry?.audio_path ?? null
-  );
-  /** Pfad, der nach dem Speichern erhalten bleiben soll (null = entfernen). */
-  const [keepAudioPath, setKeepAudioPath] = useState(entry?.audio_path ?? null);
 
   const [phase, setPhase] = useState<Phase>("idle");
   /** Fortschritt beim Hochladen der Bilder — „Bild 2 von 5“. */
@@ -489,11 +512,28 @@ export function EntryForm({
 
   const busy = phase !== "idle";
   const showClassField = CLASS_CATEGORIES.includes(category);
+  /**
+   * Die Kategorie „Schule“ ist für die Eckdaten der Schulgeschichte gedacht —
+   * Gründung, Jubiläum, Anbau — und nicht für persönliche Erinnerungen. Ein
+   * Eintrag-Konto bekommt sie deshalb gar nicht erst angeboten: Was man nicht
+   * sieht, kann man auch nicht aus Versehen anklicken.
+   *
+   * Steht sie an einem bestehenden Eintrag, bleibt sie sichtbar. Sonst zeigte
+   * die Auswahl beim Bearbeiten überhaupt keine Antwort an, und ein Klick auf
+   * eine andere Kategorie wäre die einzige Möglichkeit, das Bild zu erklären.
+   */
+  const categoryOptions = useMemo(
+    () =>
+      CATEGORIES.filter(
+        (c) => isAdmin || c.id !== "schule" || category === c.id
+      ),
+    [isAdmin, category]
+  );
   /** Der kurze Weg in die Erinnerungs-Wolke — beim Bearbeiten gibt es ihn nicht. */
   const isMoment = wizard && kind === "moment";
 
   /**
-   * Die Schritte dieses Durchgangs — je nach Weg und Rolle vier bis sechs.
+   * Die Schritte dieses Durchgangs — je nach Weg und Rolle drei bis sechs.
    * Solange nichts gewählt ist, zeigt die Anzeige den längeren Weg; sobald die
    * Wahl fällt, schrumpft sie sichtbar. Das ist keine Panne, sondern die
    * ehrlichste Rückmeldung auf „Bester Moment“: Es wird kürzer.
@@ -508,17 +548,12 @@ export function EntryForm({
     (key: StepKey) => steps.findIndex((s) => s.key === key),
     [steps]
   );
-  /** Bilder und Ton gibt es nur, wenn es den Schritt dafür gibt (Admin, kein Moment). */
+  /** Bilder gibt es nur, wenn es den Schritt dafür gibt (Admin, kein Moment). */
   const hasMediaStep = indexOfStep("medien") >= 0;
 
   // Objekt-URLs der Vorschauen freigeben, sobald ein Bild aus dem Formular fällt.
   const allImages = useMemo(() => [cover, ...gallery], [cover, gallery]);
   useObjectUrlCleanup(allImages);
-
-  const existingAudioUrl = useMemo(
-    () => (keepAudioPath ? publicUrl(AUDIO_BUCKET, keepAudioPath) : null),
-    [keepAudioPath]
-  );
 
   /** Das gelesene Datum — `null` heißt „ohne Datum“, nicht „ungültig“. */
   const smartDate = useMemo(
@@ -605,7 +640,9 @@ export function EntryForm({
         message: `Die Beschreibung ist zu lang (höchstens ${DESCRIPTION_MAX} Zeichen) — bitte etwas kürzen.`,
       };
     }
-    if (key === "erzaehlen" && isMoment && momentText.length > MOMENT_TEXT_MAX) {
+    // Der kurze Text des Moment-Wegs steht seit dem Umbau beim Titel — die
+    // Prüfung wandert mit, sonst landete man mit dem Mangel im falschen Schritt.
+    if (key === "worum" && isMoment && momentText.length > MOMENT_TEXT_MAX) {
       return {
         message: `Für die Erinnerungs-Wolke sind höchstens ${MOMENT_TEXT_MAX} Zeichen vorgesehen — bitte etwas kürzen.`,
         focusId: "entry-moment-text",
@@ -659,7 +696,6 @@ export function EntryForm({
       setDateText("");
       setCover(null);
       setGallery([]);
-      setAudio(null);
     }
   }
 
@@ -736,19 +772,12 @@ export function EntryForm({
     setAuthorName("");
     setDescription("");
     setMomentText("");
-    // Die Einwilligung gilt für einen Beitrag, nicht für den ganzen Nachmittag.
-    setConsent(false);
-    setConsentTried(false);
-    setRank("normal");
     setCover(null);
     setGallery([]);
-    setAudio(null);
     // Wichtig: Die gerade gespeicherten Bilder gehören jetzt zum angelegten
     // Eintrag — sie dürfen beim nächsten Speichern nicht aufgeräumt werden.
     setStoredImagePath(null);
     setStoredImagePaths([]);
-    setStoredAudioPath(null);
-    setKeepAudioPath(null);
     setCheckStep(null);
     setError(null);
     setSaved(null);
@@ -775,18 +804,6 @@ export function EntryForm({
         landOn(i, problem);
         return;
       }
-    }
-
-    /*
-     * Die Einwilligung ist keine Feldprüfung, sondern die letzte Handlung vor
-     * dem Veröffentlichen — deshalb steht sie hier für sich. Der Absende-Knopf
-     * ist ohne Haken ohnehin gesperrt; hierher kommt man nur mit der
-     * Eingabetaste, und auch dann soll klar sein, woran es liegt.
-     */
-    if (wizard && !consent) {
-      setConsentTried(true);
-      document.getElementById("entry-consent")?.focus();
-      return;
     }
 
     const cleanTitle = title.trim();
@@ -828,8 +845,7 @@ export function EntryForm({
             contentType: prepared.mime,
             upsert: false,
           });
-        if (upErr)
-          throw new FriendlyError(describeUploadError(upErr.message, "Bild"));
+        if (upErr) throw new FriendlyError(describeUploadError(upErr.message));
         uploaded.push({ bucket: IMAGE_BUCKET, path });
         return path;
       }
@@ -842,22 +858,6 @@ export function EntryForm({
       }
 
       setUpload(null);
-
-      let audioPath = keepAudioPath;
-      if (audio && isAdmin) {
-        setPhase("audio");
-        const path = `${session.user.id}/${crypto.randomUUID()}.${audio.ext}`;
-        const { error: upErr } = await supabase.storage
-          .from(AUDIO_BUCKET)
-          .upload(path, audio.file, {
-            contentType: audio.mime,
-            upsert: false,
-          });
-        if (upErr) throw new FriendlyError(describeUploadError(upErr.message, "Audio"));
-        uploaded.push({ bucket: AUDIO_BUCKET, path });
-        audioPath = path;
-      }
-
       setPhase("saving");
 
       const fields = {
@@ -870,30 +870,45 @@ export function EntryForm({
         month: smart?.month ?? null,
         day: smart?.day ?? null,
         /*
-         * Bild- und Tonspalten fasst nur ein Admin-Konto an. Für Eintrag-Konten
+         * Die Bildspalten fasst nur ein Admin-Konto an. Für Eintrag-Konten
          * stehen sie gar nicht erst im Datensatz: Die Datenbank weist einen
          * INSERT mit gesetztem image_path sonst ab (Migration 0016), und ein
          * mitgeschicktes „null“ wäre eine Behauptung über etwas, das dieses
-         * Konto nicht entscheiden darf.
+         * Konto nicht entscheiden darf. Dasselbe gilt beim Nachbessern eigener
+         * Beiträge (Policy entries_update_own_editor).
+         *
+         * audio_path steht hier gar nicht mehr: Hochladen kann das niemand
+         * mehr, und was gespeichert ist, soll ein Speichern überleben — ein
+         * mitgeschicktes „null“ würde vorhandene Tonspuren stillschweigend
+         * abhängen.
          */
         ...(isAdmin
           ? {
               image_path: imagePath,
               image_paths: imagePaths,
-              audio_path: audioPath,
             }
           : {}),
       };
 
       if (isEdit && entry) {
         /*
-         * Nur beim Bearbeiten wird noch über den Rang entschieden — die
-         * Schul-Meilensteine (Gründung 1971, 50 Jahre GymNW) müssen pflegbar
-         * bleiben.
+         * Der Rang wird nur an EINER Stelle überhaupt noch angefasst: Ein
+         * Admin setzt beim Bearbeiten das Meilenstein-Häkchen, damit die
+         * Eckdaten der Schule (Gründung 1971, 50 Jahre GymNW) pflegbar
+         * bleiben. Ein Eintrag-Konto schickt die Spalte gar nicht mit — es
+         * korrigiert seinen Text, es stuft nichts ein.
+         *
+         * is_important schreibt dieses Formular nirgends mehr: Wichtigkeit
+         * wächst aus der Zahl der Stimmen, das rechnet die Startseite aus.
+         * Nur beim Aufstieg zum Meilenstein muss die Spalte mit — beides
+         * zugleich verbietet die Bedingung entries_rank_exclusive.
          */
+        const rank = isAdmin
+          ? { is_milestone: milestone, ...(milestone ? { is_important: false } : {}) }
+          : {};
         const { error: dbErr } = await supabase
           .from("entries")
-          .update({ ...fields, ...rankFlags(rank, isAdmin) })
+          .update({ ...fields, ...rank })
           .eq("id", entry.id);
         if (dbErr) throw new FriendlyError(describeDbError(dbErr.message));
         onSaved?.("updated");
@@ -921,19 +936,13 @@ export function EntryForm({
           await removeQuietly(IMAGE_BUCKET, path);
         }
       }
-      if (storedAudioPath && storedAudioPath !== audioPath) {
-        await removeQuietly(AUDIO_BUCKET, storedAudioPath);
-      }
 
       setStoredImagePath(imagePath);
       setStoredImagePaths(imagePaths);
-      setStoredAudioPath(audioPath);
-      setKeepAudioPath(audioPath);
       // Aus „frisch hochgeladen“ wird „gespeichert“: Die Objekt-URLs der
       // Vorschauen werden dadurch frei, die Bilder kommen jetzt vom CDN.
       setCover(imagePath ? storedImageItem(imagePath) : null);
       setGallery(imagePaths.map((path) => storedImageItem(path)));
-      setAudio(null);
       setPhase("idle");
       setSaved(isEdit ? "updated" : "created");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -968,7 +977,10 @@ export function EntryForm({
       for (const path of storedImagePaths) {
         await removeQuietly(IMAGE_BUCKET, path);
       }
-      await removeQuietly(AUDIO_BUCKET, storedAudioPath);
+      // Hochladen kann Ton niemand mehr — eine ALTE Aufnahme muss beim Löschen
+      // trotzdem mit weg. Sonst bliebe die Stimme eines echten Menschen im
+      // öffentlichen Speicher liegen, obwohl seine Erinnerung gelöscht wurde.
+      await removeQuietly(AUDIO_BUCKET, entry.audio_path);
       router.replace("/");
     } catch (err) {
       failWith(
@@ -1035,15 +1047,13 @@ export function EntryForm({
       ? upload && upload.total > 1
         ? `Bild ${upload.done} von ${upload.total} wird hochgeladen …`
         : "Bild wird hochgeladen …"
-      : phase === "audio"
-        ? "Audio wird hochgeladen …"
-        : phase === "saving"
-          ? "Wird gespeichert …"
-          : isEdit
-            ? "Änderungen speichern"
-            : isMoment
-              ? "In die Erinnerungs-Wolke!"
-              : "Auf den Zeitstrahl!";
+      : phase === "saving"
+        ? "Wird gespeichert …"
+        : isEdit
+          ? "Änderungen speichern"
+          : isMoment
+            ? "In die Erinnerungs-Wolke!"
+            : "Auf den Zeitstrahl!";
 
   const checkKey = checkStep === null ? null : steps[checkStep]?.key;
   const titleMissing = checkKey === "worum" && title.trim().length === 0;
@@ -1075,11 +1085,17 @@ export function EntryForm({
       case "worum":
         return (
           <>
-            {/* 1 — Titel */}
+            {/* 1 — Der Titel. Die einzige Pflichtangabe im ganzen Formular. */}
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <label className="label" htmlFor="entry-title">
-                  {isMoment ? "Dein Wort oder Thema" : "Titel"}{" "}
+                  {/* Beim Bearbeiten neutral: Es kann genauso gut eine
+                      Erinnerung ohne Datum sein. */}
+                  {isMoment
+                    ? "Dein Wort dafür"
+                    : wizard
+                      ? "Wie heißt das Ereignis?"
+                      : "Titel"}{" "}
                   <span aria-hidden className="font-bold text-fox-deep">*</span>
                   <span className="sr-only">(Pflichtfeld)</span>
                 </label>
@@ -1087,6 +1103,9 @@ export function EntryForm({
                   noch {TITLE_MAX - title.length}
                 </span>
               </div>
+              {/* Der Platzhalter ist eine echte Antwort, keine Bedienanleitung:
+                  „Pausen mit Freunden“ erklärt in zwei Sekunden mehr über die
+                  erwartete Antwort als drei Zeilen Hinweistext darunter. */}
               <input
                 id="entry-title"
                 ref={titleRef}
@@ -1094,8 +1113,8 @@ export function EntryForm({
                 className="input min-h-12"
                 placeholder={
                   isMoment
-                    ? "z. B. Meine Einschulung"
-                    : "z. B. Einweihung der neuen Sporthalle"
+                    ? "Pausen mit Freunden"
+                    : "Fußballturnier des 7. Jahrgangs"
                 }
                 maxLength={TITLE_MAX}
                 value={title}
@@ -1112,8 +1131,8 @@ export function EntryForm({
                     className="note-enter text-xs font-semibold text-ink-bad"
                   >
                     {isMoment
-                      ? "Bitte ein Wort oder einen kurzen Titel eingeben."
-                      : "Bitte einen Titel eingeben."}
+                      ? "Bitte schreib ein Wort oder einen kurzen Titel dazu."
+                      : "Bitte gib dem Ereignis einen Namen."}
                   </p>
                 )}
               </div>
@@ -1128,17 +1147,103 @@ export function EntryForm({
               <SimilarPanel query={title} onChoose={(hit) => setVoiceTarget(hit)} />
             )}
 
-            {/* 3 — Kategorie */}
+            {/*
+              3 — Beim Moment steht der Satz gleich beim Wort: „Bläserklasse“
+              und „Wir haben jeden Dienstag vor der ersten Stunde geprobt“ sind
+              ein Gedanke, kein zweiter Schritt. Bewusst ein schlichtes Feld mit
+              hartem Deckel — in der Wolke zählt das Wort.
+            */}
+            {isMoment && (
+              <div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <label className="label" htmlFor="entry-moment-text">
+                    Magst du einen Satz dazu schreiben?
+                  </label>
+                  <span aria-hidden className="hint tabular-nums">
+                    noch {momentLeft} Zeichen
+                  </span>
+                </div>
+                <textarea
+                  id="entry-moment-text"
+                  rows={3}
+                  className="input min-h-24 leading-relaxed"
+                  placeholder="Wir haben jede Pause auf der Mauer gesessen."
+                  maxLength={MOMENT_TEXT_MAX}
+                  value={momentText}
+                  disabled={busy}
+                  onChange={(e) => setMomentText(e.target.value)}
+                />
+                <p className="hint mt-1.5">Freiwillig — du kannst es leer lassen.</p>
+              </div>
+            )}
+          </>
+        );
+
+      case "erzaehlen":
+        return (
+          <>
+            {/*
+              4 — Die Geschichte. Nur beim Ereignis-Weg: Der Moment hat seinen
+              Satz schon beim Wort stehen.
+
+              Zwei Felder für dieselbe Spalte, und das mit Absicht: Ein
+              Admin-Konto schreibt die offiziellen Texte der Schule und braucht
+              Zwischenüberschriften und Aufzählungen. Ein Eintrag-Konto schreibt
+              drei Sätze — für die ist eine Werkzeugleiste mit sechs Knöpfen
+              kein Angebot, sondern eine Frage mehr („brauche ich das?“).
+              Gespeichert wird in beiden Fällen dasselbe schlichte Textformat
+              (src/lib/richText.ts), ein getippter Absatz kommt also genauso auf
+              dem Zeitstrahl an wie ein gestalteter.
+            */}
+            {!isMoment &&
+              (isAdmin ? (
+                <RichTextInput
+                  id="entry-description"
+                  label="Beschreibung"
+                  value={description}
+                  onChange={setDescription}
+                  maxLength={DESCRIPTION_MAX}
+                  placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
+                  disabled={busy}
+                />
+              ) : (
+                <div>
+                  <label className="label" htmlFor="entry-description">
+                    {wizard ? "Was ist passiert?" : "Dein Text"}
+                  </label>
+                  <textarea
+                    id="entry-description"
+                    rows={5}
+                    className="input min-h-32 leading-relaxed"
+                    placeholder="Wir haben das Fußballturnier gewonnen. Alle haben mitgefiebert."
+                    maxLength={DESCRIPTION_MAX}
+                    value={description}
+                    disabled={busy}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                  <p className="hint mt-1.5">
+                    Freiwillig — zwei, drei Sätze reichen völlig.
+                  </p>
+                </div>
+              ))}
+
+            {/*
+              5 — Wer erzählt das? Kategorie, Name und Klasse gehören zusammen:
+              Es ist dreimal dieselbe Frage, nur unterschiedlich genau. Früher
+              stand die Kategorie beim Titel — dort war sie eine Sortieraufgabe
+              mitten im Erzählen.
+            */}
             <div>
               <span className="label" id="entry-category-label">
-                Kategorie <span aria-hidden className="font-bold text-fox-deep">*</span>
+                {isAdmin ? "Kategorie" : "Wer erzählt das?"}{" "}
+                <span aria-hidden className="font-bold text-fox-deep">*</span>
               </span>
               <div
                 role="radiogroup"
                 aria-labelledby="entry-category-label"
                 className="flex flex-wrap gap-2.5"
               >
-                {CATEGORIES.map((c) => {
+                {categoryOptions.map((c) => {
                   const active = category === c.id;
                   const fg = readableOn(c.color);
                   return (
@@ -1186,6 +1291,49 @@ export function EntryForm({
                 {categoryById(category).description}
               </p>
             </div>
+
+            {/* 6 — Der Name. Freiwillig, und das steht auch so da. */}
+            <div>
+              <label className="label" htmlFor="entry-author">
+                Wie heißt du?
+              </label>
+              <input
+                id="entry-author"
+                type="text"
+                className="input min-h-12"
+                placeholder="Maria K."
+                maxLength={AUTHOR_MAX}
+                autoComplete="name"
+                value={authorName}
+                disabled={busy}
+                onChange={(e) => setAuthorName(e.target.value)}
+              />
+              <p className="hint mt-1.5">
+                Freiwillig — der Name steht später an deiner Erinnerung.
+              </p>
+            </div>
+
+            {/* 7 — Klasse: nur da, wo sie überhaupt eine Antwort hat. */}
+            {showClassField && (
+              <div className="animate-fade-up">
+                <label className="label" htmlFor="entry-class">
+                  Deine Klasse
+                </label>
+                <input
+                  id="entry-class"
+                  type="text"
+                  className="input min-h-12"
+                  placeholder="8a"
+                  maxLength={CLASS_MAX}
+                  value={className}
+                  disabled={busy}
+                  onChange={(e) => setClassName(e.target.value)}
+                />
+                <p className="hint mt-1.5">
+                  Freiwillig — damit lässt sich später nach Jahrgängen suchen.
+                </p>
+              </div>
+            )}
           </>
         );
 
@@ -1200,96 +1348,6 @@ export function EntryForm({
             disabled={busy}
             showRequiredError={checkKey === "wann"}
           />
-        );
-
-      case "erzaehlen":
-        return (
-          <>
-            {/*
-              4 — Der Text. Zwei Wege, zwei Felder: Ein Ereignis darf ein
-              kleiner Aufsatz werden, ein Wolken-Eintrag bleibt ein Satz.
-              Deshalb hier keine Formatier-Werkzeuge und ein harter Deckel.
-            */}
-            {isMoment ? (
-              <div>
-                <div className="flex items-baseline justify-between gap-3">
-                  <label className="label" htmlFor="entry-moment-text">
-                    Deine Erinnerung
-                  </label>
-                  <span aria-hidden className="hint tabular-nums">
-                    noch {momentLeft} Zeichen
-                  </span>
-                </div>
-                <textarea
-                  id="entry-moment-text"
-                  rows={4}
-                  className="input min-h-28 leading-relaxed"
-                  placeholder="z. B. Der erste Schultag mit der Zuckertüte im Regen."
-                  maxLength={MOMENT_TEXT_MAX}
-                  value={momentText}
-                  disabled={busy}
-                  onChange={(e) => setMomentText(e.target.value)}
-                />
-                <p className="hint mt-1.5 leading-relaxed">
-                  Freiwillig und bewusst kurz: In der Wolke zählt vor allem dein
-                  Wort — {MOMENT_TEXT_MAX} Zeichen sind das Höchste.
-                </p>
-              </div>
-            ) : (
-              <RichTextInput
-                id="entry-description"
-                label="Beschreibung"
-                value={description}
-                onChange={setDescription}
-                maxLength={DESCRIPTION_MAX}
-                placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
-                disabled={busy}
-              />
-            )}
-
-            {/* 5 — Autor */}
-            <div>
-              <label className="label" htmlFor="entry-author">
-                Wer erinnert sich?
-              </label>
-              <input
-                id="entry-author"
-                type="text"
-                className="input min-h-12"
-                placeholder="z. B. Maria K., Abi 1998"
-                maxLength={AUTHOR_MAX}
-                autoComplete="name"
-                value={authorName}
-                disabled={busy}
-                onChange={(e) => setAuthorName(e.target.value)}
-              />
-              <p className="hint mt-1.5">
-                Optional — der Name steht später an der Erinnerung.
-              </p>
-            </div>
-
-            {/* 6 — Klasse (nur bei Schüler/Ehemalige) */}
-            {showClassField && (
-              <div className="animate-fade-up">
-                <label className="label" htmlFor="entry-class">
-                  Klasse
-                </label>
-                <input
-                  id="entry-class"
-                  type="text"
-                  className="input min-h-12"
-                  placeholder="z. B. 8a oder Abi 1996"
-                  maxLength={CLASS_MAX}
-                  value={className}
-                  disabled={busy}
-                  onChange={(e) => setClassName(e.target.value)}
-                />
-                <p className="hint mt-1.5">
-                  Optional — damit lässt sich später nach Jahrgängen filtern.
-                </p>
-              </div>
-            )}
-          </>
         );
 
       case "medien":
@@ -1310,7 +1368,7 @@ export function EntryForm({
               disabled={busy}
             />
 
-            {/* 8 — Galerie */}
+            {/* 9 — Galerie */}
             <GalleryUpload
               items={gallery}
               max={GALLERY_MAX}
@@ -1321,17 +1379,6 @@ export function EntryForm({
               onUseAsCover={makeCover}
               disabled={busy}
             />
-
-            {/* 9 — Audio (wie Bilder: Projektteam) */}
-            {isAdmin && (
-              <AudioUpload
-                value={audio}
-                onChange={setAudio}
-                existingUrl={existingAudioUrl}
-                onRemoveExisting={() => setKeepAudioPath(null)}
-                disabled={busy}
-              />
-            )}
           </>
         );
 
@@ -1358,17 +1405,7 @@ export function EntryForm({
             <div className="rounded-xl border border-paper-line bg-paper-sunk px-4 py-1">
               <SummaryRow
                 label={isMoment ? "Dein Moment" : "Worum es geht"}
-                value={
-                  <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                    <span>{title.trim() || "Ohne Titel"}</span>
-                    <span
-                      className="chip cursor-default"
-                      style={categoryPillStyle(category)}
-                    >
-                      {categoryById(category).label}
-                    </span>
-                  </span>
-                }
+                value={title.trim() || "Ohne Titel"}
                 muted={!title.trim()}
                 editLabel={stepLabel("worum")}
                 onEdit={jump("worum")}
@@ -1393,8 +1430,15 @@ export function EntryForm({
                         ? `${descriptionPlain.slice(0, 140)}${descriptionPlain.length > 140 ? " …" : ""}`
                         : "Noch nichts geschrieben"}
                     </span>
-                    {/* Die Klasse steht hier schon so, wie sie gespeichert wird. */}
-                    <span className="mt-0.5 block font-normal text-coal-soft">
+                    {/* Kategorie, Name und Klasse stehen hier schon so, wie sie
+                        gespeichert werden — sie gehören zum selben Schritt. */}
+                    <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 font-normal text-coal-soft">
+                      <span
+                        className="chip cursor-default"
+                        style={categoryPillStyle(category)}
+                      >
+                        {categoryById(category).label}
+                      </span>
                       {[
                         authorName.trim(),
                         showClassField
@@ -1412,22 +1456,15 @@ export function EntryForm({
               />
               {hasMediaStep && (
                 <SummaryRow
-                  label="Bild und Ton"
+                  label="Bilder"
                   value={
-                    imageCount === 0 && !audio && !keepAudioPath
+                    imageCount === 0
                       ? "Keine Bilder"
-                      : [
-                          imageCount === 1
-                            ? "1 Bild"
-                            : imageCount > 1
-                              ? `${imageCount} Bilder`
-                              : "",
-                          audio || keepAudioPath ? "Tonaufnahme" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")
+                      : imageCount === 1
+                        ? "1 Bild"
+                        : `${imageCount} Bilder`
                   }
-                  muted={imageCount === 0 && !audio && !keepAudioPath}
+                  muted={imageCount === 0}
                   editLabel={stepLabel("medien")}
                   onEdit={jump("medien")}
                 />
@@ -1435,38 +1472,18 @@ export function EntryForm({
             </div>
 
             {/*
-              11 — Rangstufe NUR beim Bearbeiten.
-              Beim Neuanlegen gibt es sie nicht mehr: „Ereignisse werden
+              11 — Das Meilenstein-Häkchen: NUR beim Bearbeiten und NUR für
+              Admin-Konten. Beim Anlegen gibt es es nicht — „Ereignisse werden
               wichtiger, wenn mehr Leute sie teilen und ihre eigene Erinnerung
-              hinzufügen“ — die Bedeutung wächst also aus den Stimmen und wird
-              nicht vorab angekreuzt. Beim Bearbeiten bleibt sie, sonst ließen
-              sich die Schul-Meilensteine (Gründung 1971, 50 Jahre GymNW) nicht
-              mehr pflegen.
+              hinzufügen“, das rechnet die Startseite aus den Stimmen aus. Was
+              ein Mensch entscheiden muss, sind allein die Eckdaten der Schule
+              selbst (Gründung 1971, 50 Jahre GymNW).
             */}
-            {isEdit && (
+            {isEdit && isAdmin && (
               <RankChoice
-                value={rank}
-                onChange={setRank}
-                allowMilestone={isAdmin}
+                checked={milestone}
+                onChange={setMilestone}
                 disabled={busy}
-              />
-            )}
-
-            {/* 12 — Einwilligung, direkt über dem Absende-Knopf. */}
-            {wizard && (
-              <ConsentCheck
-                checked={consent}
-                onChange={(next) => {
-                  setConsent(next);
-                  if (next) setConsentTried(false);
-                }}
-                disabled={busy}
-                showError={consentTried}
-                note={
-                  isMoment
-                    ? "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — in der Erinnerungs-Wolke, mit allem, was du hier eingetragen hast."
-                    : "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — mit Titel, Text, Namen und Bildern, die du hier eingetragen hast."
-                }
               />
             )}
           </>
@@ -1549,6 +1566,26 @@ export function EntryForm({
                 </p>
               )}
 
+              {/*
+                Die Einwilligung steht als Satz unmittelbar über dem
+                Absende-Knopf — nicht mehr als Häkchen, das den Knopf sperrt.
+                Sie sitzt hier im Rahmen des letzten Schritts und nicht in
+                dessen Inhalt: So steht sie richtig, egal welcher Schritt der
+                letzte ist (für ein Eintrag-Konto „Wer erinnert sich?“, für ein
+                Admin-Konto „Prüfen und absenden“).
+              */}
+              {wizard && index === lastStep && (
+                <div className="mt-6">
+                  <ConsentNote
+                    note={
+                      isMoment
+                        ? "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — in der Erinnerungs-Wolke, mit allem, was du hier eingetragen hast."
+                        : "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — mit Titel, Text, Namen und Bildern, die du hier eingetragen hast."
+                    }
+                  />
+                </div>
+              )}
+
               {wizard && (
                 <div className="mt-7 flex items-center gap-2.5 border-t border-paper-line pt-6">
                   {index > 0 && (
@@ -1576,8 +1613,7 @@ export function EntryForm({
                     <button
                       type="submit"
                       className="btn-accent min-h-12 flex-1 text-base"
-                      disabled={busy || removed || !consent}
-                      aria-describedby={!consent ? "entry-submit-grund" : undefined}
+                      disabled={busy || removed}
                     >
                       {busy && phase !== "deleting" && (
                         <span
@@ -1589,16 +1625,6 @@ export function EntryForm({
                     </button>
                   )}
                 </div>
-              )}
-
-              {/*
-                Ein grauer Knopf ohne Begründung ist eine Sackgasse — vor allem
-                auf dem Handy, wo der Haken zwei Fingerbreit darüber steht.
-              */}
-              {wizard && index === lastStep && !consent && (
-                <p id="entry-submit-grund" className="hint mt-2.5 leading-relaxed">
-                  Der Knopf wird aktiv, sobald du oben zugestimmt hast.
-                </p>
               )}
             </section>
           );
