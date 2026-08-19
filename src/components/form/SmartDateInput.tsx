@@ -102,7 +102,7 @@ export function SmartDateInput({
         id={id}
         name="entry-date"
         type="text"
-        inputMode="numeric"
+        inputMode="decimal"
         autoComplete="off"
         className="input min-h-12"
         placeholder="z. B. 1996 oder 12.3.1996"
