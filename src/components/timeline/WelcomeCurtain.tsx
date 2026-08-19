@@ -16,6 +16,35 @@ const VISIBLE_MS = 7000;
 /** Dauer des Ausblendens; muss zur CSS-Angabe passen. */
 const FADE_MS = 620;
 
+/**
+ * Merker im Browser: Wer schon einmal hier war, wird nicht noch einmal
+ * begrüßt. Bewusst `localStorage` und kein Cookie — es geht niemanden etwas
+ * an, ob jemand die Seite schon kannte, und ein Cookie würde diese Auskunft
+ * bei jedem Aufruf mitschicken. Der Merker verlässt das Gerät nie.
+ */
+const SEEN_KEY = "zeitstrahl.welcome-seen";
+
+/**
+ * Stand der Dinge auf DIESEM Gerät. Steht der Merker nicht, war noch niemand
+ * da — dann wird begrüßt. Kein Zugriff auf `localStorage` heißt: lieber
+ * begrüßen als schweigen.
+ */
+function alreadySeen(): boolean {
+  try {
+    return window.localStorage.getItem(SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function rememberSeen(): void {
+  try {
+    window.localStorage.setItem(SEEN_KEY, "1");
+  } catch {
+    /* Privater Modus o. Ä. — dann grüßt die Seite eben wieder. */
+  }
+}
+
 interface WelcomeCurtainProps {
   /** Erst zeigen, wenn der Zeitstrahl wirklich steht — sonst begrüßt man ins Leere. */
   ready: boolean;
@@ -34,9 +63,10 @@ interface WelcomeCurtainProps {
  * ansieht, soll nichts wegklicken müssen, und auf dem Beamer soll niemand
  * hinlaufen, um eine Meldung zu schließen.
  *
- * Sie kommt bei jedem Aufruf wieder. Das ist Absicht: An einem Aktionstag ist
- * jede Person, die davorsteht, die erste — und ein Merker im Browser würde
- * genau die Begrüßung verschlucken, für die sie gedacht ist.
+ * Und sie kommt nur EINMAL je Gerät. Wer die Seite schon kennt, braucht die
+ * Erklärung nicht noch einmal — auf dem Handy in der Pause wäre sie beim
+ * zweiten Aufruf schlicht im Weg. Gemerkt wird das im Browser des Geräts,
+ * nicht bei uns.
  */
 export default function WelcomeCurtain({ ready }: WelcomeCurtainProps) {
   const [state, setState] = useState<"warten" | "offen" | "geht" | "weg">(
@@ -48,9 +78,14 @@ export default function WelcomeCurtain({ ready }: WelcomeCurtainProps) {
     setState((current) => (current === "offen" ? "geht" : current));
   }, []);
 
-  // Aufziehen, sobald die Daten da sind.
+  // Aufziehen, sobald die Daten da sind — aber nur beim ersten Besuch.
   useEffect(() => {
     if (!ready || state !== "warten") return;
+    if (alreadySeen()) {
+      setState("weg");
+      return;
+    }
+    rememberSeen();
     setState("offen");
   }, [ready, state]);
 
