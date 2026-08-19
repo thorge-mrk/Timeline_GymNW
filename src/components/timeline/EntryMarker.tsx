@@ -29,6 +29,15 @@ interface EntryMarkerProps {
   highlighted: boolean;
   /** Verzögerung des gestaffelten Eingangs in ms; `null` = kein Eingang. */
   enterDelay: number | null;
+  /**
+   * Wie viele weitere Stimmen hängen an diesem Eintrag? (0 bzw. nicht gesetzt
+   * = nur der Eintrag selbst — dann sieht die Pille exakt so aus wie bisher.)
+   *
+   * Angezeigt wird die SUMME, also Eintrag plus Stimmen: Eine „3" an der Pille
+   * heißt „drei Menschen erinnern sich daran" — dieselbe Zahl wie in der
+   * Erinnerungs-Wolke, damit man nicht zweimal zählen lernen muss.
+   */
+  voiceCount?: number;
   onSelect: (entry: Entry) => void;
 }
 
@@ -95,6 +104,7 @@ function EntryMarker({
   axisY,
   highlighted,
   enterDelay,
+  voiceCount = 0,
   onSelect,
 }: EntryMarkerProps) {
   const category = categoryById(entry.category);
@@ -139,6 +149,24 @@ function EntryMarker({
       ? "Wichtig: "
       : "";
 
+  /** Eintrag plus Stimmen — so viele Menschen erinnern sich an dieses Thema. */
+  const memories = voiceCount + 1;
+
+  /*
+   * Vorlesetext aus den Teilen, die es wirklich gibt. Ein Eintrag ohne
+   * Jahreszahl steht zwar in der Erinnerungs-Wolke und nicht an der Achse —
+   * aber falls doch einer hier landet, soll die Stimme nicht „Einschulung,“
+   * sagen und dann verstummen.
+   */
+  const dateText = formatEntryDate(entry);
+  const ariaLabel = [
+    `${rankLabel}${entry.title}`,
+    dateText,
+    voiceCount > 0 ? `${memories} Erinnerungen` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   return (
     <>
       <span
@@ -157,7 +185,7 @@ function EntryMarker({
       <button
         type="button"
         onClick={() => onSelect(entry)}
-        aria-label={`${rankLabel}${entry.title}, ${formatEntryDate(entry)}`}
+        aria-label={ariaLabel}
         title={entry.title}
         className={`tl-marker absolute flex h-[26px] cursor-pointer items-center gap-1.5 rounded-full border pr-2.5 text-left shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox ${
           isMilestone ? "tl-marker--milestone" : ""
@@ -209,7 +237,26 @@ function EntryMarker({
         <span className="min-w-0 flex-1 truncate text-[12px] leading-4 font-semibold">
           {entry.title}
         </span>
-        {showYear && (
+        {/*
+          Stimmen-Zähler. Er borgt sich seine Farbe von der Pille selbst
+          (`currentColor` ist die ink-Variante der Kategorie) statt eine neue
+          mitzubringen: eine Fußnote am Titel, kein dritter Rang. Hängt keine
+          Stimme dran, ist er gar nicht da — die Pille sieht dann aus wie immer.
+        */}
+        {voiceCount > 0 && (
+          <span
+            aria-hidden="true"
+            className="flex h-[15px] shrink-0 items-center justify-center rounded-full px-[4.5px] text-[9.5px] leading-none font-bold tabular-nums"
+            style={{
+              backgroundColor:
+                "color-mix(in srgb, currentColor 15%, transparent)",
+            }}
+          >
+            {memories}
+          </span>
+        )}
+        {/* Ohne Jahreszahl bleibt der Platz leer statt eine Null zu zeigen. */}
+        {showYear && entry.year != null && (
           <span className="shrink-0 text-[10.5px] leading-4 font-medium opacity-70 tabular-nums">
             {entry.year}
           </span>

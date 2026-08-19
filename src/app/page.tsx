@@ -1,20 +1,26 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import SchoolMark from "@/components/SchoolMark";
 import { nowYearFraction } from "@/lib/dates";
+import { splitByDate } from "@/lib/entryGroups";
 import { timelineDomain } from "@/lib/timelinePosition";
 import type { Entry } from "@/lib/types";
 import { upsertEntry, useEntries } from "@/hooks/useEntries";
 import { useRealtimeEntries } from "@/hooks/useRealtimeEntries";
+import { useVoices } from "@/hooks/useVoices";
 import { useSettings } from "@/hooks/useSettings";
 import FilterBar, {
   INITIAL_FILTER,
   usesClassFilter,
   type FilterState,
 } from "@/components/timeline/FilterBar";
+import EntryDetailModal from "@/components/timeline/EntryDetailModal";
+import MemoryCloud from "@/components/timeline/MemoryCloud";
 import NewEntriesBeacon from "@/components/timeline/NewEntriesBeacon";
 import Timeline, { type FocusRequest } from "@/components/timeline/Timeline";
+import { useAuth } from "@/hooks/useAuth";
 import "@/components/timeline/timeline.css";
 
 /**
@@ -79,7 +85,9 @@ function matchesFilter(entry: Entry, filter: FilterState): boolean {
 }
 
 export default function Home() {
+  const router = useRouter();
   const { entries, setEntries, loading, error, refetch } = useEntries();
+  const { index: voiceIndex, refetchEntry: refetchVoices } = useVoices();
   const [filter, setFilter] = useState<FilterState>(INITIAL_FILTER);
   const [focus, setFocus] = useState<FocusRequest | null>(null);
 
@@ -94,18 +102,40 @@ export default function Home() {
 
   /** Live-Übertragung und Vollbild sind pro Gerät einstellbar. */
   const { settings } = useSettings();
+  /** Angemeldet? Dann darf man zu einem Thema dazuschreiben. */
+  const { isContributor } = useAuth();
+
+  /** Ist die Erinnerungs-Wolke aufgeklappt? */
+  const [cloudOpen, setCloudOpen] = useState(false);
+  /** Aus der Wolke geöffnetes Thema — der Zeitstrahl hat sein eigenes Fenster. */
+  const [cloudEntry, setCloudEntry] = useState<Entry | null>(null);
 
   /** Immer der aktuelle Stand der Schlange — für den Selbstlauf weiter unten. */
   const pendingRef = useRef<Entry[]>(pending);
   pendingRef.current = pending;
 
   const now = useMemo(() => nowYearFraction(), []);
-  // Gesamtbereich aus ALLEN Einträgen — Filter sollen die Achse nicht verschieben.
-  const domain = useMemo(() => timelineDomain(entries, now), [entries, now]);
+
+  /*
+   * Erinnerungen mit und ohne Jahreszahl gehen hier auseinander. Auf die Achse
+   * kommt nur, was ein Datum hat — alles andere sammelt sich in der Wolke
+   * darunter. Getrennt wird VOR dem Filter, damit die Achse nicht plötzlich
+   * andere Grenzen bekommt, bloß weil jemand eine Kategorie anklickt.
+   */
+  const { dated, undated } = useMemo(() => splitByDate(entries), [entries]);
+
+  // Gesamtbereich aus allen DATIERTEN Einträgen.
+  const domain = useMemo(() => timelineDomain(dated, now), [dated, now]);
 
   const filtered = useMemo(
-    () => entries.filter((entry) => matchesFilter(entry, filter)),
-    [entries, filter]
+    () => dated.filter((entry) => matchesFilter(entry, filter)),
+    [dated, filter]
+  );
+
+  /** Die datumslosen Erinnerungen — vom selben Filter erfasst. */
+  const filteredUndated = useMemo(
+    () => undated.filter((entry) => matchesFilter(entry, filter)),
+    [undated, filter]
   );
 
   const classOptions = useMemo(() => {
@@ -120,6 +150,12 @@ export default function Home() {
       a.localeCompare(b, "de", { numeric: true, sensitivity: "base" })
     );
   }, [entries, filter.category]);
+
+  /** Wie viele Menschen hängen an diesem Thema? Der Zähler an Pille und Wolke. */
+  const voiceCount = useCallback(
+    (entryId: string) => voiceIndex.count(entryId),
+    [voiceIndex]
+  );
 
   /** Fliegt zu einem Eintrag; blendet dafür nötigenfalls den Filter aus. */
   const focusEntry = useCallback((entry: Entry) => {
@@ -195,6 +231,10 @@ export default function Home() {
     onUpsert: handleUpsert,
     onRemove: handleRemove,
     onInserted: handleInserted,
+    // Ergänzt jemand eine Erinnerung, wächst die Zahl am Thema mit — ohne
+    // dass deshalb die Kamera losfliegt: Es ist kein neuer Ort, nur eine
+    // weitere Stimme am selben.
+    onVoiceChanged: refetchVoices,
   });
 
   // Wird die Übertragung abgeschaltet, verschwindet auch die Warteschlange:
@@ -206,6 +246,15 @@ export default function Home() {
   const noteInteraction = useCallback(() => {
     lastInteractionRef.current = Date.now();
   }, []);
+
+  /** Ein Fenster aus der Wolke verdeckt den Zeitstrahl genauso wie eins vom Strahl. */
+  const overlayVisible = overlayOpen || cloudEntry !== null;
+
+  /** Zu einem Thema dazuschreiben — der Weg führt ins Formular. */
+  const goAddVoice = useCallback(
+    (entry: Entry) => router.push(`/eintragen/?ergaenzen=${entry.id}`),
+    [router]
+  );
 
   // Der Ruhezeit-Zähler startet mit dem Laden der Seite, nicht bei null —
   // sonst gälte der allererste Moment schon als „acht Sekunden nichts getan".
@@ -219,7 +268,7 @@ export default function Home() {
         filter={filter}
         onChange={setFilter}
         classOptions={classOptions}
-        count={filtered.length}
+        count={filtered.length + filteredUndated.length}
       />
 
       <div
@@ -296,6 +345,9 @@ export default function Home() {
             onEntryDeleted={handleRemove}
             onOverlayChange={setOverlayOpen}
             filterKey={`${filter.category}:${filter.className ?? ""}`}
+            voiceCount={voiceCount}
+            voicesFor={voiceIndex.forEntry}
+            onAddVoice={isContributor ? goAddVoice : undefined}
             emptyHint={
               filtered.length === 0
                 ? "Zu diesem Filter gibt es noch keine Einträge."
@@ -306,10 +358,37 @@ export default function Home() {
 
         <NewEntriesBeacon
           pending={pending}
-          hidden={overlayOpen}
+          hidden={overlayVisible}
           onJump={handleJump}
         />
       </div>
+
+      {/*
+        Die Erinnerungen ohne Jahreszahl. Sie stehen UNTER dem Zeitstrahl, nicht
+        darauf — ein eigener Ort für alles, was sich nicht datieren lässt, ohne
+        dass jemand ein Datum erfinden müsste. Ist die Wolke leer, gibt die
+        Komponente `null` zurück und nimmt keinen Platz weg.
+      */}
+      <MemoryCloud
+        entries={filteredUndated}
+        voiceCount={voiceCount}
+        onOpen={setCloudEntry}
+        open={cloudOpen}
+        onOpenChange={setCloudOpen}
+      />
+
+      {cloudEntry && (
+        <EntryDetailModal
+          entry={cloudEntry}
+          onClose={() => setCloudEntry(null)}
+          onDeleted={(id) => {
+            handleRemove(id);
+            setCloudEntry(null);
+          }}
+          voices={voiceIndex.forEntry(cloudEntry.id)}
+          onAddVoice={isContributor ? goAddVoice : undefined}
+        />
+      )}
     </div>
   );
 }

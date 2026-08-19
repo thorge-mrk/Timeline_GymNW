@@ -1,0 +1,118 @@
+/*
+ * Vorschläge unter dem Titelfeld (SimilarEntries.tsx).
+ *
+ * Ergänzung zum Design-System aus globals.css — hier steht nur, was sich mit
+ * Tailwind-Utilities nicht sauber ausdrücken lässt: eigene Übergangskurven,
+ * versetzte Eingänge und Hover-Regeln, die nur auf echten Zeigergeräten
+ * laufen. Es werden ausschließlich Tokens aus globals.css verwendet, keine
+ * neuen Farben. (form.css wird bewusst nicht angefasst.)
+ */
+
+/* ------------------------------------------------------------------ *
+ * Das Feld selbst
+ * Es erscheint direkt unter dem Titelfeld — also kommt es auch von dort:
+ * ein kurzer Weg nach unten und mehr Deckkraft, sonst nichts. Bewusst nicht
+ * .animate-fade-up aus globals.css: Das skaliert leicht mit, und skalierter
+ * Text flimmert beim Einblenden.
+ * ------------------------------------------------------------------ */
+@keyframes similar-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.similar-panel {
+  animation: similar-panel-in 220ms var(--ease-out-strong) both;
+}
+
+/* ------------------------------------------------------------------ *
+ * Die Vorschlagsreihen
+ * Jede Reihe kommt einmal herein, leicht versetzt — das liest sich als
+ * Liste und nicht als Aufblitzen. Beim Weitertippen bleiben bestehende
+ * Reihen ruhig stehen: Sie behalten ihren React-Key und werden nicht neu
+ * eingehängt, also läuft die Animation auch nicht erneut.
+ * ------------------------------------------------------------------ */
+@keyframes similar-hit-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.similar-hit {
+  animation: similar-hit-in 220ms var(--ease-out-strong) both;
+  animation-delay: var(--enter-delay, 0ms);
+  /* Nie `all`: Nur was sich wirklich ändern soll, wird überblendet. */
+  transition:
+    border-color 160ms var(--ease-out-strong),
+    box-shadow 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .similar-hit:hover {
+    border-color: color-mix(in srgb, var(--color-fox) 45%, transparent);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+/* Reduzierte Bewegung: globals.css kürzt die Dauer, die Verzögerung aber
+   nicht — sonst erschiene die dritte Reihe messbar später als die erste. */
+@media (prefers-reduced-motion: reduce) {
+  .similar-hit {
+    animation-delay: 0ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * „Meine Erinnerung dazuschreiben“
+ * Ergänzt .btn-ghost um die Fuchsfarbe. Bewusst nicht so laut wie
+ * .btn-accent: Der Vorschlag ist ein Angebot, nicht der Hauptweg durch das
+ * Formular. (Ohne @layer, damit die Regel gegen die Utilities gewinnt —
+ * genauso wie .btn-quiet in form.css.)
+ * ------------------------------------------------------------------ */
+.similar-join {
+  border-color: color-mix(in srgb, var(--color-fox) 50%, transparent);
+  background-color: var(--color-paper-card);
+  color: var(--color-fox-deep);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .similar-join:hover:not(:disabled) {
+    border-color: var(--color-fox);
+    background-color: var(--color-fox-soft);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * „Nein, meins ist etwas anderes“
+ * Muss leicht zu finden und leicht zu treffen sein (44 px Fingermaß),
+ * darf aber nicht wie ein zweiter Hauptknopf aussehen.
+ * ------------------------------------------------------------------ */
+.similar-dismiss {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 0.25rem;
+  border-radius: 0.5rem;
+  color: var(--color-coal-soft);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-coal-soft) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: color 150ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .similar-dismiss:hover {
+    color: var(--color-coal);
+  }
+}

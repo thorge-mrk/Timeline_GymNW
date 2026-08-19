@@ -408,3 +408,149 @@
     border-color: color-mix(in srgb, var(--color-coal-soft) 30%, transparent);
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * Geführter Ablauf (StepProgress + die Schritt-Tafeln)
+ *
+ * Alle fünf Schritte bleiben eingehängt; nur der offene ist sichtbar.
+ * Das kostet ein bisschen DOM und spart dafür jede Menge Ärger: Der
+ * Beschreibungs-Editor behält seinen Inhalt, Bildvorschauen behalten ihre
+ * Objekt-URLs, und beim Vor und Zurück geht garantiert nichts verloren.
+ *
+ * Die Einblend-Bewegung braucht deshalb keinen JavaScript-Anstoß: Ein
+ * Element, das von display:none zurück in die Anzeige kommt, startet seine
+ * Animation von selbst neu.
+ * ------------------------------------------------------------------ */
+@keyframes step-in-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes step-in-back {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Nur im geführten Ablauf gleitet etwas — beim Bearbeiten stehen alle
+   Abschnitte ohnehin offen untereinander. */
+.step-flow[data-dir="fwd"] > .step-panel {
+  animation: step-in-fwd 260ms var(--ease-out-strong) both;
+}
+.step-flow[data-dir="back"] > .step-panel {
+  animation: step-in-back 260ms var(--ease-out-strong) both;
+}
+
+/* ------------------------------------------------------------------ *
+ * Fortschrittsleiste — wächst über scaleX, damit der Browser nur Pixel
+ * schiebt und kein Layout neu rechnet.
+ * ------------------------------------------------------------------ */
+.step-bar {
+  height: 0.375rem;
+  border-radius: 999px;
+  background-color: var(--color-paper-sunk);
+  overflow: hidden;
+}
+.step-bar__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background-color: var(--color-fox);
+  transform-origin: left center;
+  transition: transform 320ms var(--ease-out-strong);
+}
+
+/* ------------------------------------------------------------------ *
+ * Die fünf Schritt-Punkte. 44 px im Quadrat — Daumenmaß auf dem iPad.
+ * ------------------------------------------------------------------ */
+.step-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--color-paper-line);
+  border-radius: 999px;
+  background-color: var(--color-paper-card);
+  color: var(--color-coal-faint);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color 160ms var(--ease-out-strong),
+    border-color 160ms var(--ease-out-strong),
+    color 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+.step-dot:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.step-dot:active:not(:disabled) {
+  transform: scale(0.97);
+}
+/* Erledigt: ruhig, aber sichtbar abgehakt. */
+.step-dot[data-state="done"] {
+  border-color: color-mix(in srgb, var(--color-moss) 40%, transparent);
+  background-color: color-mix(in srgb, var(--color-moss) 12%, transparent);
+  color: var(--ink-ok);
+}
+/* Hier stehe ich gerade. */
+.step-dot[data-state="here"] {
+  border-color: var(--color-fox);
+  background-color: var(--color-fox);
+  color: var(--color-navy);
+}
+@media (hover: hover) and (pointer: fine) {
+  .step-dot[data-state="open"]:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--color-coal-soft) 35%, transparent);
+    background-color: var(--color-paper-sunk);
+    color: var(--color-coal);
+  }
+  .step-dot[data-state="done"]:not(:disabled):hover {
+    border-color: color-mix(in srgb, var(--color-moss) 60%, transparent);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Gleichwertige Wahlmöglichkeiten (Datum: „weiß ich“ / „weiß ich nicht“)
+ * Bewusst dieselbe Optik wie .rank-option: Keine der beiden Antworten
+ * darf wie die zweite Wahl aussehen.
+ * ------------------------------------------------------------------ */
+.choice-row {
+  border-color: var(--color-paper-line);
+  background-color: var(--color-paper-sunk);
+  transition:
+    border-color 160ms var(--ease-out-strong),
+    background-color 160ms var(--ease-out-strong);
+}
+.choice-row[data-on="true"] {
+  border-color: var(--color-fox);
+  background-color: var(--color-fox-soft);
+}
+@media (hover: hover) and (pointer: fine) {
+  .choice-row[data-on="false"]:not(:has(input:disabled)):hover {
+    border-color: color-mix(in srgb, var(--color-coal-soft) 30%, transparent);
+  }
+}
+
+/* Auf schmalen Geräten soll ein Schritt möglichst ohne Scrollen zu
+   erfassen sein — das Schreibfeld darf dafür etwas flacher starten. */
+@media (max-width: 30rem) {
+  .editor-area {
+    min-height: 9rem;
+  }
+}

@@ -52,6 +52,12 @@ function EintragenView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get("id");
+  /**
+   * Kommt man über „Auch meine Erinnerung dazuschreiben“ aus dem Detail-Fenster,
+   * steht hier die id des Themas — dann wird kein neuer Eintrag angeboten,
+   * sondern gleich die eigene Stimme dazu.
+   */
+  const voiceId = searchParams.get("ergaenzen");
   const { session, loading, isAdmin, isContributor, signOut } = useAuth();
   const userId = session?.user.id ?? null;
 
@@ -109,6 +115,28 @@ function EintragenView() {
       active = false;
     };
   }, [editId, userId, isAdmin, reloadNonce]);
+
+  /*
+   * Das Thema, zu dem jemand dazuschreiben will. Anders als beim Bearbeiten
+   * darf das JEDES Konto — deshalb hängt das Laden nicht an `isAdmin`.
+   */
+  const [voiceEntry, setVoiceEntry] = useState<Entry | null>(null);
+  useEffect(() => {
+    if (!voiceId || !userId) return;
+    let active = true;
+    void (async () => {
+      const { data } = await supabase
+        .from("entries")
+        .select("*")
+        .eq("id", voiceId)
+        .maybeSingle();
+      if (!active || !data) return;
+      setVoiceEntry({ ...data, category: categoryById(data.category).id });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [voiceId, userId]);
 
   /*
    * Live-Aktualisierung. Der Zeitstrahl-State liegt auf der Startseite — hier
@@ -306,12 +334,19 @@ function EintragenView() {
       )}
 
       <EntryForm
-        key={editing && entry ? `${entry.id}:${reloadNonce}` : "neu"}
+        key={
+          editing && entry
+            ? `${entry.id}:${reloadNonce}`
+            : voiceEntry
+              ? `stimme:${voiceEntry.id}`
+              : "neu"
+        }
         session={session}
         isAdmin={isAdmin}
         entry={editing ? entry : null}
         removed={editing && conflict === "deleted"}
         onSaved={handleSaved}
+        voiceFor={editing ? null : voiceEntry}
       />
 
       <LiveEntriesBadge

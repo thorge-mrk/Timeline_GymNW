@@ -1,6 +1,6 @@
 /**
  * Generiert aus dem Live-Schema via Supabase MCP (generate_typescript_types),
- * Stand 2026-08-17. Nach Schema-Änderungen neu generieren — nicht von Hand bearbeiten.
+ * Stand 2026-08-19. Nach Schema-Änderungen neu generieren — nicht von Hand bearbeiten.
  */
 export type Json =
   | string
@@ -38,7 +38,7 @@ export type Database = {
           title: string
           updated_at: string
           video_url: string | null
-          year: number
+          year: number | null
         }
         Insert: {
           audio_path?: string | null
@@ -59,7 +59,7 @@ export type Database = {
           title: string
           updated_at?: string
           video_url?: string | null
-          year: number
+          year: number | null
         }
         Update: {
           audio_path?: string | null
@@ -80,9 +80,50 @@ export type Database = {
           title?: string
           updated_at?: string
           video_url?: string | null
-          year?: number
+          year?: number | null
         }
         Relationships: []
+      }
+      entry_voices: {
+        Row: {
+          author_name: string | null
+          body: string
+          class_name: string | null
+          created_at: string
+          created_by: string | null
+          entry_id: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          author_name?: string | null
+          body: string
+          class_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          entry_id: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          author_name?: string | null
+          body?: string
+          class_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          entry_id?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entry_voices_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: false
+            referencedRelation: "entries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

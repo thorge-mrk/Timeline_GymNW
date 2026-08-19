@@ -26,6 +26,12 @@ export interface UseRealtimeEntriesOptions {
    * Optional; wer nur eine Liste pflegt, braucht weiterhin nur `onUpsert`.
    */
   onUpdated?: (entry: Entry) => void;
+  /**
+   * An diesem Thema hat jemand eine weitere Erinnerung ergänzt (oder die
+   * Verwaltung eine entfernt). Übergeben wird die id des EINTRAGS, nicht der
+   * Stimme — nachgeladen wird ohnehin das ganze Bündel.
+   */
+  onVoiceChanged?: (entryId: string) => void;
 }
 
 /**
@@ -113,6 +119,14 @@ export function useRealtimeEntries(opts: UseRealtimeEntriesOptions): {
       .on("broadcast", { event: "insert" }, (msg) => void handle("insert")(msg))
       .on("broadcast", { event: "update" }, (msg) => void handle("update")(msg))
       .on("broadcast", { event: "delete" }, (msg) => void handle("delete")(msg))
+      // Stimmen kommen über ein eigenes Ereignis herein; der Payload trägt die
+      // id des Eintrags, an dem sich etwas getan hat.
+      .on("broadcast", { event: "voice" }, (msg) => {
+        const entryId = extractId(
+          (msg as Record<string, unknown>)?.payload
+        );
+        if (entryId) optsRef.current.onVoiceChanged?.(entryId);
+      })
       // Zweiter Parameter ist der Fehler; er wird bewusst verschluckt.
       // `CHANNEL_ERROR`/`TIMED_OUT` heißt hier nur: kein Live-Betrieb.
       .subscribe((status) => {

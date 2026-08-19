@@ -1,0 +1,203 @@
+/*
+ * Erinnerungs-Wolke — das aufklappbare Band unter dem Zeitstrahl.
+ *
+ * Eigener Präfix `mc-`; alles hier gehört zu MemoryCloud.tsx und zu
+ * niemandem sonst. Es steht nur, was Tailwind-Utilities nicht sauber
+ * ausdrücken können: die Schublade, die Schriftgröße als Rechnung, Hover
+ * hinter `(hover: hover) and (pointer: fine)` und der Druck.
+ *
+ * Kurven (aus globals.css):
+ *   --ease-out-strong  Ein-/Ausgänge und kurze Reaktionen
+ *   --ease-drawer      das Aufziehen der Schublade
+ */
+
+/* ========================================================================== */
+/*  Das Band selbst                                                           */
+/* ========================================================================== */
+
+.mc-toggle {
+  transition: background-color 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mc-toggle:hover {
+    background-color: var(--color-paper-sunk);
+  }
+}
+
+/*
+ * Der Druck wirkt auf das Zeichen, nicht auf das ganze Band — ein Streifen
+ * über die volle Breite, der beim Tippen schrumpft, sieht nach Fehler aus.
+ * Dieselbe Entscheidung wie bei der Zoom-Leiste.
+ */
+.mc-chevron {
+  transition: transform 260ms var(--ease-drawer);
+}
+
+.mc-root[data-state="open"] .mc-chevron {
+  transform: rotate(180deg);
+}
+
+.mc-toggle:active .mc-chevron {
+  transform: scale(0.88);
+  transition-duration: 110ms;
+}
+
+.mc-root[data-state="open"] .mc-toggle:active .mc-chevron {
+  transform: rotate(180deg) scale(0.88);
+}
+
+/*
+ * Der Vorgeschmack im Band bleibt beim Aufklappen stehen und blendet nur aus.
+ * Würde er verschwinden, sprängen Zahl und Zeichen daneben eine Spur zur
+ * Seite — eine Bewegung, die niemand bestellt hat.
+ */
+.mc-peek {
+  transition: opacity 160ms var(--ease-out-strong);
+}
+
+.mc-root[data-state="open"] .mc-peek {
+  opacity: 0;
+}
+
+/* ========================================================================== */
+/*  Schublade                                                                 */
+/* ========================================================================== */
+
+/*
+ * Das Aufklappen läuft über `grid-template-rows: 0fr → 1fr`. Hier wird
+ * ausnahmsweise doch Layout bewegt statt nur `transform`, und zwar mit
+ * Absicht: Das Band liegt IM Fluss und muss dem Zeitstrahl echten Platz
+ * abnehmen. Ein reines Einblenden würde die Höhe springen lassen, und genau
+ * dieser Sprung ist das, was man auf einer Wand hinter zwanzig Leuten sieht.
+ * Bewegt wird deshalb eine einzige Eigenschaft, niemals `all` — und die
+ * Wörter darin behalten ihre Breite, wickeln sich also während der Bewegung
+ * nicht neu um.
+ */
+.mc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 300ms var(--ease-drawer);
+}
+
+.mc-root[data-state="open"] .mc-panel {
+  grid-template-rows: 1fr;
+}
+
+/* Der Beschnitt der Schublade. `min-height: 0` macht 0fr überhaupt erst wirksam. */
+.mc-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * Der Inhalt kommt einen Tick nach der Schublade — erst öffnet sich etwas,
+ * dann ist etwas darin. Umgekehrt wäre es ein Aufblitzen.
+ */
+.mc-scroll {
+  max-height: 42dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 160ms var(--ease-out-strong),
+    transform 260ms var(--ease-drawer);
+}
+
+.mc-root[data-state="open"] .mc-scroll {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 70ms;
+}
+
+/* ========================================================================== */
+/*  Wortgrößen                                                                */
+/* ========================================================================== */
+
+/*
+ * Die Schriftgröße ist eine Rechnung, kein Sprungtabellen-Wert: Die
+ * Komponente setzt je Wort nur `--mc-w` (0 … 1, aus der Zahl der Stimmen),
+ * die Grenzen stehen hier. Dadurch wächst die Wolke mit dem Bildschirm, ohne
+ * dass JavaScript beim Größerziehen irgendetwas nachmessen müsste — auf dem
+ * Beamer stehen dieselben Wörter, nur größer.
+ */
+.mc-cloud {
+  --mc-min: 0.9375rem; /* 15px */
+  --mc-max: 1.625rem; /* 26px */
+}
+
+@media (min-width: 640px) {
+  .mc-cloud {
+    --mc-min: 1rem; /* 16px */
+    --mc-max: 2.125rem; /* 34px */
+  }
+}
+
+@media (min-width: 1280px) {
+  .mc-cloud {
+    --mc-min: 1.0625rem; /* 17px */
+    --mc-max: 2.75rem; /* 44px */
+  }
+}
+
+.mc-word {
+  font-size: calc(var(--mc-min) + var(--mc-w, 0) * (var(--mc-max) - var(--mc-min)));
+  /* Alles am Wort ist in `em` bemessen, damit ein großes Wort auch großzügig
+     gepolstert ist und ein kleines knapp — sonst sehen die kleinen aufgebläht
+     aus. */
+  padding: 0.24em 0.68em;
+  line-height: 1.18;
+  transition:
+    transform 150ms var(--ease-out-strong),
+    box-shadow 150ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mc-word:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+/* Nach der Hover-Regel notiert, damit der Druck sie überschreibt. */
+.mc-word:active {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+
+/* Der globale Fokusring rundet auf 8 px ab — ein Wort bleibt rund. */
+.mc-word:focus-visible {
+  border-radius: 999px;
+}
+
+/* Die Zahl neben dem Wort wächst mit: sie gehört zum Wort, nicht daneben. */
+.mc-count {
+  font-size: 0.62em;
+  opacity: 0.62;
+}
+
+/* ========================================================================== */
+/*  Reduzierte Bewegung                                                       */
+/* ========================================================================== */
+
+/*
+ * globals.css kürzt bereits alle Dauern auf fast null. Hier fällt zusätzlich
+ * die Ortsveränderung weg — Deckkraft und Farbe bleiben, sie erklären etwas.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .mc-word:hover,
+  .mc-word:active,
+  .mc-toggle:active .mc-chevron {
+    transform: none;
+  }
+
+  .mc-root[data-state="open"] .mc-toggle:active .mc-chevron,
+  .mc-root[data-state="open"] .mc-chevron {
+    transform: rotate(180deg);
+  }
+
+  .mc-scroll {
+    transform: none;
+  }
+}
