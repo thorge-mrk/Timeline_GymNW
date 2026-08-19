@@ -1576,11 +1576,15 @@ export function EntryForm({
               */}
               {wizard && index === lastStep && (
                 <div className="mt-6">
+                  {/* „und Bildern“ steht nur da, wo es auch stimmen kann:
+                      Fotos ergänzt allein das Projektteam. */}
                   <ConsentNote
                     note={
                       isMoment
                         ? "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — in der Erinnerungs-Wolke, mit allem, was du hier eingetragen hast."
-                        : "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — mit Titel, Text, Namen und Bildern, die du hier eingetragen hast."
+                        : isAdmin
+                          ? "Der Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — mit Titel, Text, Namen und Bildern, die hier eingetragen sind."
+                          : "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — mit Titel, Text und Namen, die du hier eingetragen hast."
                     }
                   />
                 </div>
