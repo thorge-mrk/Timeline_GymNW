@@ -1,0 +1,97 @@
+/* ==========================================================================
+   Die Begrüßung
+   --------------------------------------------------------------------------
+   Sie soll sich anfühlen wie ein Vorhang, der aufgeht: einmal kurz die Bühne
+   zeigen, dann den Blick freigeben. Deshalb kommt sie ruhig und geht schnell —
+   Ankommen darf Zeit haben, Aufhören nicht.
+
+   Animiert werden ausschließlich `opacity` und `transform`. Der Papiergrund
+   liegt als eigene Ebene darunter, damit das Weichzeichnen nicht den Text
+   mitnimmt.
+   ========================================================================== */
+
+.wc-curtain {
+  background: color-mix(in srgb, var(--color-paper) 92%, transparent);
+  backdrop-filter: blur(3px);
+  animation: wc-in 380ms var(--ease-out-strong) both;
+}
+
+.wc-curtain[data-state="geht"] {
+  /* Zügiger als das Kommen: Wer weitermachen will, soll nicht warten. */
+  animation: wc-out 620ms var(--ease-in-out-strong) both;
+  pointer-events: none;
+}
+
+@keyframes wc-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes wc-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/*
+ * Die Karte selbst hat bewusst KEINEN Rahmen und keinen Schatten. Sie ist kein
+ * Fenster, das über der Seite liegt — sie ist die Seite, kurz bevor sie
+ * anfängt.
+ */
+.wc-card > * {
+  animation: wc-rise 620ms var(--ease-out-strong) both;
+}
+
+/*
+ * Gestaffelt von oben nach unten, damit es sich liest wie gesprochen:
+ * erst das Zeichen, dann der Name, dann der Satz dazu.
+ */
+.wc-mark {
+  animation-delay: 60ms;
+}
+.wc-line-1 {
+  animation-delay: 150ms;
+}
+.wc-line-2 {
+  animation-delay: 230ms;
+}
+.wc-line-3 {
+  animation-delay: 310ms;
+}
+.wc-rule {
+  animation-delay: 400ms;
+}
+.wc-hint {
+  animation-delay: 480ms;
+}
+
+@keyframes wc-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/*
+ * Wer Bewegung abbestellt hat, bekommt denselben Inhalt ohne jedes Gleiten.
+ * Die Begrüßung bleibt — nur der Auftritt entfällt.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .wc-curtain,
+  .wc-curtain[data-state="geht"],
+  .wc-card > * {
+    animation-duration: 0.01ms;
+    animation-delay: 0ms;
+  }
+}

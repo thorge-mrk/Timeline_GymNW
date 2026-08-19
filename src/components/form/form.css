@@ -546,6 +546,68 @@
     border-color: color-mix(in srgb, var(--color-coal-soft) 30%, transparent);
   }
 }
+/* Fehlt der Pflicht-Haken, wird die Zeile sichtbar rot — nicht nur der Text
+   darunter. Steht nach der „gewählt“-Regel, gewinnt also im Zweifel. */
+.choice-row[data-missing="true"] {
+  border-color: color-mix(in srgb, var(--color-brick) 50%, transparent);
+  background-color: color-mix(in srgb, var(--color-brick) 6%, transparent);
+}
+
+/* ------------------------------------------------------------------ *
+ * Die beiden Beitrags-Arten (KindChoice)
+ * Zwei große Karten, absichtlich gleich laut. Bewusst etwas kräftiger
+ * als .choice-row: Es ist die erste Frage überhaupt, und sie trägt die
+ * ganze weitere Strecke.
+ * ------------------------------------------------------------------ */
+.kind-card {
+  border-color: var(--color-paper-line);
+  background-color: var(--color-paper-sunk);
+  transition:
+    border-color 160ms var(--ease-out-strong),
+    background-color 160ms var(--ease-out-strong),
+    box-shadow 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+.kind-card[data-on="true"] {
+  border-color: var(--color-fox);
+  background-color: var(--color-fox-soft);
+  box-shadow: var(--shadow-card);
+}
+/* Noch nichts gewählt, obwohl „Weiter“ gedrückt wurde: beide Karten
+   bekennen Farbe — die Frage ist offen, nicht eine bestimmte Antwort. */
+.kind-card[data-missing="true"] {
+  border-color: color-mix(in srgb, var(--color-brick) 50%, transparent);
+}
+/* Druck-Rückmeldung: Die Karte gibt unter dem Finger nach. */
+.kind-card:active:not(:has(input:disabled)) {
+  transform: scale(0.97);
+  transition-duration: 100ms;
+}
+@media (hover: hover) and (pointer: fine) {
+  .kind-card[data-on="false"]:not(:has(input:disabled)):hover {
+    border-color: color-mix(in srgb, var(--color-coal-soft) 30%, transparent);
+    box-shadow: var(--shadow-card);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Links in der Einwilligung (ConsentCheck)
+ * Sie müssen als Link erkennbar sein, ohne den Satz zu zerreißen —
+ * also unterstrichen in Fuchsfarbe, mit ein wenig Abstand zur Schrift.
+ * ------------------------------------------------------------------ */
+.consent-link {
+  display: inline;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-fox-deep) 45%, transparent);
+  text-underline-offset: 3px;
+  transition: color 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .consent-link:hover {
+    color: var(--color-coal);
+    text-decoration-color: currentColor;
+  }
+}
 
 /* Auf schmalen Geräten soll ein Schritt möglichst ohne Scrollen zu
    erfassen sein — das Schreibfeld darf dafür etwas flacher starten. */

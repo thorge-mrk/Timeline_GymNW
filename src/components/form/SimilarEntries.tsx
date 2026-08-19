@@ -2,6 +2,7 @@
 
 import { categoryById, categoryPillStyle } from "@/lib/categories";
 import { formatEntryDate } from "@/lib/dates";
+import { richTextToPlain } from "@/lib/richText";
 import type { SimilarHit } from "@/lib/similarity";
 import type { Entry } from "@/lib/types";
 import "./similarEntries.css";
@@ -9,13 +10,16 @@ import "./similarEntries.css";
 /** Mehr als drei Vorschläge sind keine Hilfe mehr, sondern eine zweite Aufgabe. */
 const MAX_SHOWN = 3;
 
+/** So viel Beschreibung genügt, um zu erkennen: Ist das wirklich dasselbe? */
+const EXCERPT_MAX = 130;
+
 export interface SimilarEntriesProps {
   hits: SimilarHit[];
   /** Anzahl bereits vorhandener Stimmen zu einem Eintrag. */
   voiceCount: (entryId: string) => number;
-  /** „Meine Erinnerung dort ergänzen“ */
+  /** „Meine Erinnerung hier dazuschreiben“ */
   onChoose: (entry: Entry) => void;
-  /** „Nein, das ist etwas anderes“ — Vorschläge ausblenden. */
+  /** „Nein, meins ist etwas anderes“ — Vorschläge ausblenden. */
   onDismiss: () => void;
 }
 
@@ -39,24 +43,24 @@ function VoicesIcon() {
 }
 
 /**
- * Vorschläge unter dem Titelfeld: „Das gibt es schon — willst du dich
- * anschließen?“
+ * „Gibt es das schon?“ — die Frage unter dem Titelfeld.
  *
  * Am Aktionstag tragen mehrere Menschen dasselbe Thema getrennt ein
- * („Berlinfahrt“ steht dreimal in der Datenbank). Deshalb zeigt dieses Feld
- * beim Tippen, was es schon gibt, und bietet an, die eigene Erinnerung dort
- * DAZUZUSCHREIBEN, statt einen zweiten Punkt auf der Achse anzulegen.
+ * („Berlinfahrt“ steht dreimal in der Datenbank). Deshalb ist das hier kein
+ * Vorschlag am Rand mehr, sondern eine ausdrückliche Frage mit zwei
+ * gleichwertigen Antworten: dazuschreiben oder einen eigenen Eintrag anlegen.
  *
- * Bewusst kein Dialog und kein Overlay:
+ * Bewusst trotzdem kein Dialog und kein Overlay:
  *
  *  · Es blockiert nichts. Wer weitertippen will, tippt weiter — das Feld
  *    steht unter dem Eingabefeld und nimmt keinen Fokus.
  *  · Es behauptet nichts. Der Text fragt, er stellt nicht fest; die
  *    Ähnlichkeitssuche kann sich irren, und „Nein, meins ist etwas anderes“
  *    ist genauso gültig wie ein Treffer.
- *  · Es bleibt kurz. Höchstens drei Vorschläge, jeder mit Datum, Kategorie
- *    und der Zahl der Erinnerungen, die schon daran hängen — genug, um zu
- *    erkennen, ob es dasselbe Thema ist.
+ *  · Es zeigt genug zum Entscheiden. Je Treffer: Titel, Kategorie, Datum,
+ *    wie viele Erinnerungen schon dranhängen — und der Anfang der
+ *    Beschreibung. Ohne den kann man „Sommerfest“ von „Sommerfest“ nicht
+ *    unterscheiden.
  *
  * Wer nichts Passendes findet, sieht dieses Feld gar nicht: ohne Treffer
  * kommt `null` zurück.
@@ -80,13 +84,13 @@ export default function SimilarEntries({
         <div className="min-w-0 flex-1">
           <h3
             id="similar-entries-heading"
-            className="text-sm font-bold text-coal"
+            className="text-base font-bold text-coal"
           >
-            Daran erinnert sich schon jemand
+            Gibt es das schon?
           </h3>
           <p className="hint mt-1 max-w-prose leading-relaxed">
-            Ist eines davon dein Thema? Dann schreib deine Erinnerung dort dazu
-            — so steht ihr gemeinsam auf dem Zeitstrahl statt zweimal einzeln.
+            Wir haben etwas Ähnliches gefunden. Möchtest du deine Erinnerung dort
+            dazuschreiben — oder ist deins etwas anderes?
           </p>
         </div>
       </div>
@@ -107,7 +111,12 @@ export default function SimilarEntries({
           const entry = hit.entry;
           const category = categoryById(entry.category);
           const date = formatEntryDate(entry);
-          const voices = voiceCount(entry.id);
+          /* Der Eintrag selbst ist die erste Erinnerung — genauso zählt es die
+             Erinnerungs-Wolke, und zwei verschiedene Zahlen für dieselbe Sache
+             wären nur verwirrend. */
+          const memories = voiceCount(entry.id) + 1;
+          const plain = richTextToPlain(entry.description).trim();
+          const excerpt = plain.slice(0, EXCERPT_MAX);
 
           return (
             <li
@@ -138,15 +147,21 @@ export default function SimilarEntries({
                   {/* Einträge ohne Datum gibt es bewusst — dann fällt die Angabe weg. */}
                   {date && <span className="hint">{date}</span>}
 
-                  {voices > 0 && (
-                    <span className="hint font-semibold">
-                      {voices === 1 ? "1 Erinnerung" : `${voices} Erinnerungen`}
-                    </span>
-                  )}
+                  <span className="hint font-semibold">
+                    {memories === 1 ? "1 Erinnerung" : `${memories} Erinnerungen`}
+                  </span>
 
                   {/* Warum dieser Vorschlag hier steht — das nimmt dem Feld das Rätselhafte. */}
                   <span className="hint text-coal-faint">{hit.reason}</span>
                 </div>
+
+                {/* Der Anfang der Beschreibung: das eigentliche Erkennungsmerkmal. */}
+                {excerpt && (
+                  <p className="hint mt-1.5 leading-relaxed break-words">
+                    {excerpt}
+                    {plain.length > EXCERPT_MAX ? " …" : ""}
+                  </p>
+                )}
               </div>
 
               <button
@@ -154,7 +169,7 @@ export default function SimilarEntries({
                 onClick={() => onChoose(entry)}
                 className="btn-ghost similar-join min-h-11 shrink-0 text-xs"
               >
-                Meine Erinnerung dazuschreiben
+                Meine Erinnerung hier dazuschreiben
                 <span className="sr-only"> zu „{entry.title}“</span>
               </button>
             </li>
@@ -162,7 +177,16 @@ export default function SimilarEntries({
         })}
       </ul>
 
-      <button type="button" onClick={onDismiss} className="similar-dismiss mt-1 text-xs">
+      {/*
+        Der zweite Weg. Er sieht bewusst wie ein Knopf aus und nicht wie ein
+        Kleingedrucktes: „Nein“ ist hier eine vollwertige Antwort, keine
+        Ausrede.
+      */}
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="btn-ghost similar-deny mt-3 min-h-11 w-full text-xs sm:w-auto"
+      >
         Nein, meins ist etwas anderes
       </button>
     </section>

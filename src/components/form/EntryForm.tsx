@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   CATEGORIES,
@@ -16,9 +16,11 @@ import { richTextToPlain } from "@/lib/richText";
 import { publicUrl, supabase } from "@/lib/supabase";
 import type { Entry, EntryInsert } from "@/lib/types";
 import { AudioUpload, type PreparedAudio } from "./AudioUpload";
+import { ConsentCheck } from "./ConsentCheck";
 import { DateChoice, type DateMode } from "./DateChoice";
 import { GalleryUpload } from "./GalleryUpload";
 import { ImageUpload } from "./ImageUpload";
+import { KindChoice, type EntryKind } from "./KindChoice";
 import {
   GALLERY_MAX,
   IMAGE_BUCKET,
@@ -47,55 +49,121 @@ const DESCRIPTION_MAX = 3000;
 const CLASS_MAX = 30;
 const AUTHOR_MAX = 80;
 
+/**
+ * Ein Wolken-Eintrag ist ein Wort und ein Satz, kein Aufsatz. 200 Zeichen sind
+ * knapp genug, dass man auf den Punkt kommt, und lang genug für den Punkt.
+ */
+const MOMENT_TEXT_MAX = 200;
+
 const DATE_INPUT_ID = "entry-date";
 const DEFAULT_CATEGORY: CategoryId = "schueler";
 
+/** Die Schritte, die es überhaupt gibt — welche davon kommen, hängt vom Weg ab. */
+type StepKey = "art" | "worum" | "wann" | "erzaehlen" | "medien" | "pruefen";
+
+interface FormStep extends StepDef {
+  key: StepKey;
+}
+
 /**
- * Der geführte Ablauf.
+ * Der geführte Ablauf — und zwar in ZWEI Längen.
  *
  * Vorher war das eine einzige lange Seite mit zehn Feldern. Vor einem
  * Menschen, der in der Pause dreißig Sekunden Zeit hat, ist das zu viel auf
  * einmal — man sieht die Menge und nicht die Frage. Jetzt steht auf jedem
  * Bildschirm genau eine Frage, und man weiß immer, wie viel noch kommt.
  *
- * Die Reihenfolge folgt dem, wie Menschen erzählen: erst WAS, dann WANN, dann
- * die Geschichte, dann die Bilder — und am Ende einmal drübersehen. Die
- * Rangstufe steht bewusst ganz hinten: „Wie wichtig ist das?“ kann man erst
- * beantworten, wenn man den fertigen Eintrag vor sich sieht.
+ * Ganz vorne steht seit Neuestem die Weiche: Ereignis oder bester Moment?
+ * Danach folgt der Rest dem, wie Menschen erzählen — erst WAS, dann WANN, dann
+ * die Geschichte, dann die Bilder, am Ende einmal drübersehen.
+ *
+ * Der Moment-Weg lässt WANN und die Bilder weg. Nicht aus Sparsamkeit: Ein
+ * Datum gibt es dort schlicht nicht („Pausen mit meinen Freunden“), und ein
+ * Wolken-Eintrag ist ein Wort, kein bebilderter Bericht. Vier Schritte statt
+ * sechs — wer nur „Bläserklasse“ beitragen will, ist in einer halben Minute
+ * fertig.
+ *
+ * „Bild und Ton“ gibt es nur für Admin-Konten. Die Datenschutzerklärung sagt
+ * zu, dass Fotos ausschließlich vom Projektteam ergänzt werden, und die
+ * Datenbank hält sich daran (Policy images_insert_admin, RLS auf image_path).
+ * Ein Schritt, der beim Speichern abgewiesen würde, wäre ein Versprechen, das
+ * das Formular nicht halten kann — deshalb fällt er ganz weg statt leer
+ * dazustehen. Die Schrittzahl rechnet sich von selbst mit: Alles, was zählt,
+ * springt und blättert, liest aus genau dieser Liste.
  */
-const STEPS: readonly StepDef[] = [
-  {
-    key: "worum",
-    title: "Worum geht es?",
-    lead: "Gib der Erinnerung einen Namen — und sag, zu wem sie gehört.",
-  },
-  {
+function stepsFor(
+  kind: EntryKind,
+  wizard: boolean,
+  canUpload: boolean
+): readonly FormStep[] {
+  const worum: FormStep =
+    kind === "moment"
+      ? {
+          key: "worum",
+          title: "Wie heißt dein Moment?",
+          lead: "Ein Wort oder ein kurzer Titel genügt — genau so steht er später in der Wolke.",
+        }
+      : {
+          key: "worum",
+          title: "Worum geht es?",
+          lead: "Gib dem Ereignis einen Namen — und sag, zu wem es gehört.",
+        };
+
+  const erzaehlen: FormStep =
+    kind === "moment"
+      ? {
+          key: "erzaehlen",
+          title: "Erzähl kurz davon",
+          lead: "Ein, zwei Sätze — oder auch gar keine. Hier ist alles freiwillig.",
+        }
+      : {
+          key: "erzaehlen",
+          title: "Erzähl davon",
+          lead: "Was ist passiert? Und wer erinnert sich daran?",
+        };
+
+  const wann: FormStep = {
     key: "wann",
     title: "Wann war das?",
     lead: "Das Jahr genügt. Und wenn du es nicht mehr weißt, ist das genauso richtig.",
-  },
-  {
-    key: "erzaehlen",
-    title: "Erzähl davon",
-    lead: "Was ist passiert? Und wer erinnert sich daran?",
-  },
-  {
+  };
+  const medien: FormStep = {
     key: "medien",
     title: "Bild und Ton",
     lead: "Ein Foto macht aus einem Satz eine Erinnerung. Alles hier ist freiwillig.",
-  },
-  {
+  };
+  const pruefen: FormStep = {
     key: "pruefen",
     title: "Prüfen und absenden",
-    lead: "Einmal drübersehen — danach steht es auf dem Zeitstrahl.",
-  },
-] as const;
+    lead:
+      kind === "moment"
+        ? "Einmal drübersehen — danach steht dein Moment in der Erinnerungs-Wolke."
+        : "Einmal drübersehen — danach steht es auf dem Zeitstrahl.",
+  };
 
-const LAST_STEP = STEPS.length - 1;
+  // Beim Bearbeiten steht ohnehin alles offen untereinander; die Frage nach der
+  // Art wäre dort sinnlos, denn der Eintrag existiert längst.
+  if (!wizard) {
+    return canUpload
+      ? [worum, wann, erzaehlen, medien, pruefen]
+      : [worum, wann, erzaehlen, pruefen];
+  }
+
+  const art: FormStep = {
+    key: "art",
+    title: "Was möchtest du beitragen?",
+    lead: "Beides gehört zur Schulgeschichte — die Wahl bestimmt nur, wonach wir gleich fragen.",
+  };
+
+  if (kind === "moment") return [art, worum, erzaehlen, pruefen];
+  return canUpload
+    ? [art, worum, wann, erzaehlen, medien, pruefen]
+    : [art, worum, wann, erzaehlen, pruefen];
+}
 
 /** Feste Kennung je Schritt — fürs Anspringen und für aria-labelledby. */
-function panelId(index: number): string {
-  return `entry-step-${STEPS[index]?.key ?? index}`;
+function panelId(key: StepKey): string {
+  return `entry-step-${key}`;
 }
 
 /** „10/3“ → „10-3“: Klasse/Zweig einheitlich mit Bindestrich statt Schrägstrich. */
@@ -326,6 +394,16 @@ export function EntryForm({
   const formRef = useRef<HTMLFormElement>(null);
   const headingRefs = useRef<(HTMLHeadingElement | null)[]>([]);
 
+  /**
+   * Ereignis oder bester Moment? Die allererste Frage — sie entscheidet, wie
+   * viele Schritte überhaupt kommen. Beim Bearbeiten wird sie nie gestellt.
+   *
+   * Sie startet OHNE Vorauswahl (`null`). Eine Vorauswahl würde die eine Karte
+   * zur Normalform machen und die andere zum Sonderfall — und man käme mit
+   * einem Klick auf „Weiter“ daran vorbei, ohne die Frage gelesen zu haben.
+   */
+  const [kind, setKind] = useState<EntryKind | null>(null);
+
   const [title, setTitle] = useState(entry?.title ?? "");
   const [dateText, setDateText] = useState(entry ? entryDateText(entry) : "");
   /**
@@ -342,6 +420,20 @@ export function EntryForm({
   const [className, setClassName] = useState(entry?.class_name ?? "");
   const [authorName, setAuthorName] = useState(entry?.author_name ?? "");
   const [description, setDescription] = useState(entry?.description ?? "");
+  /**
+   * Der kurze Text des Moment-Wegs. Bewusst ein eigenes Feld und nicht
+   * dasselbe wie `description`: Sonst stünde beim Umschalten plötzlich ein
+   * 800-Zeichen-Bericht in einem 200-Zeichen-Feld, und der Zähler zählte
+   * rückwärts ins Minus.
+   */
+  const [momentText, setMomentText] = useState("");
+  /**
+   * Die Einwilligung im letzten Schritt. Sie gehört zu genau diesem Beitrag —
+   * nach dem Speichern wird sie deshalb wieder abgefragt.
+   */
+  const [consent, setConsent] = useState(false);
+  /** Erst nach einem Absende-Versuch die Meldung zeigen. */
+  const [consentTried, setConsentTried] = useState(false);
 
   /** Titelbild (image_path) — neu gewählt oder schon gespeichert. */
   const [cover, setCover] = useState<ImageItem | null>(() =>
@@ -397,6 +489,27 @@ export function EntryForm({
 
   const busy = phase !== "idle";
   const showClassField = CLASS_CATEGORIES.includes(category);
+  /** Der kurze Weg in die Erinnerungs-Wolke — beim Bearbeiten gibt es ihn nicht. */
+  const isMoment = wizard && kind === "moment";
+
+  /**
+   * Die Schritte dieses Durchgangs — je nach Weg und Rolle vier bis sechs.
+   * Solange nichts gewählt ist, zeigt die Anzeige den längeren Weg; sobald die
+   * Wahl fällt, schrumpft sie sichtbar. Das ist keine Panne, sondern die
+   * ehrlichste Rückmeldung auf „Bester Moment“: Es wird kürzer.
+   */
+  const steps = useMemo(
+    () => stepsFor(kind ?? "ereignis", wizard, isAdmin),
+    [kind, wizard, isAdmin]
+  );
+  const lastStep = steps.length - 1;
+  /** Welcher Schritt trägt diese Kennung? −1, wenn es ihn in diesem Weg nicht gibt. */
+  const indexOfStep = useCallback(
+    (key: StepKey) => steps.findIndex((s) => s.key === key),
+    [steps]
+  );
+  /** Bilder und Ton gibt es nur, wenn es den Schritt dafür gibt (Admin, kein Moment). */
+  const hasMediaStep = indexOfStep("medien") >= 0;
 
   // Objekt-URLs der Vorschauen freigeben, sobald ein Bild aus dem Formular fällt.
   const allImages = useMemo(() => [cover, ...gallery], [cover, gallery]);
@@ -463,13 +576,23 @@ export function EntryForm({
 
   /** Was fehlt in diesem Schritt noch? `null` heißt: alles gut. */
   function stepProblem(index: number): StepProblem | null {
-    if (index === 0 && title.trim().length === 0) {
+    const key = steps[index]?.key;
+
+    if (key === "art" && kind === null) {
       return {
-        message: "Bitte gib der Erinnerung zuerst einen Titel.",
+        message:
+          "Bitte wähl zuerst aus, was du beitragen möchtest — beides ist gleich willkommen.",
+      };
+    }
+    if (key === "worum" && title.trim().length === 0) {
+      return {
+        message: isMoment
+          ? "Bitte gib deinem Moment zuerst ein Wort oder einen kurzen Titel."
+          : "Bitte gib dem Ereignis zuerst einen Titel.",
         focusId: "entry-title",
       };
     }
-    if (index === 1 && dateMode === "known" && parseSmartDate(dateText) === null) {
+    if (key === "wann" && dateMode === "known" && parseSmartDate(dateText) === null) {
       return {
         message: dateText.trim()
           ? "Dieses Datum verstehe ich noch nicht — z. B. 1996, 3.1996 oder 12.3.1996. Sonst gern „Weiß ich nicht mehr“."
@@ -477,12 +600,18 @@ export function EntryForm({
         focusId: DATE_INPUT_ID,
       };
     }
-    if (index === 2 && description.length > DESCRIPTION_MAX) {
+    if (key === "erzaehlen" && !isMoment && description.length > DESCRIPTION_MAX) {
       return {
         message: `Die Beschreibung ist zu lang (höchstens ${DESCRIPTION_MAX} Zeichen) — bitte etwas kürzen.`,
       };
     }
-    if (index === 3 && gallery.length > GALLERY_MAX) {
+    if (key === "erzaehlen" && isMoment && momentText.length > MOMENT_TEXT_MAX) {
+      return {
+        message: `Für die Erinnerungs-Wolke sind höchstens ${MOMENT_TEXT_MAX} Zeichen vorgesehen — bitte etwas kürzen.`,
+        focusId: "entry-moment-text",
+      };
+    }
+    if (key === "medien" && gallery.length > GALLERY_MAX) {
       return {
         message: `Es sind höchstens ${GALLERY_MAX} weitere Bilder erlaubt — bitte ein paar entfernen.`,
       };
@@ -492,6 +621,7 @@ export function EntryForm({
 
   /** Nach dem Wechsel: Cursor setzen und den Schritt in den Blick rücken. */
   function settle(index: number, focusId?: string) {
+    const key = steps[index]?.key;
     window.setTimeout(() => {
       const target = focusId
         ? document.getElementById(focusId)
@@ -503,12 +633,34 @@ export function EntryForm({
         window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const anchor = wizard
         ? formRef.current
-        : document.getElementById(panelId(index));
+        : key
+          ? document.getElementById(panelId(key))
+          : null;
       anchor?.scrollIntoView({
         block: "start",
         behavior: gentle ? "auto" : "smooth",
       });
     }, 0);
+  }
+
+  /**
+   * Die Weiche umlegen. Was der andere Weg nicht fragt, wird dabei geleert:
+   * Ein Datum oder ein Foto, das niemand mehr zu sehen bekommt, darf nicht
+   * heimlich mitgespeichert werden.
+   */
+  function chooseKind(next: EntryKind) {
+    if (next === kind) return;
+    setKind(next);
+    // Die Schrittzahl ändert sich — was man „schon besucht“ hat, gilt nicht mehr.
+    setVisited(new Set([0]));
+    setCheckStep(null);
+    if (next === "moment") {
+      setDateMode("known");
+      setDateText("");
+      setCover(null);
+      setGallery([]);
+      setAudio(null);
+    }
   }
 
   /** Auf einem Schritt landen, weil dort etwas fehlt. */
@@ -531,7 +683,7 @@ export function EntryForm({
    */
   function goTo(target: number) {
     if (busy) return;
-    const clamped = Math.max(0, Math.min(LAST_STEP, target));
+    const clamped = Math.max(0, Math.min(lastStep, target));
     if (clamped === step) return;
 
     if (clamped > step) {
@@ -558,7 +710,7 @@ export function EntryForm({
    * beherzter Druck auf der iPad-Tastatur einen halb fertigen Eintrag los.
    */
   function handleKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
-    if (!wizard || e.key !== "Enter" || e.shiftKey || step === LAST_STEP) return;
+    if (!wizard || e.key !== "Enter" || e.shiftKey || step === lastStep) return;
     const target = e.target as HTMLElement | null;
     if (!target) return;
     if (target.isContentEditable) return;
@@ -577,12 +729,16 @@ export function EntryForm({
   }
 
   function resetForNext() {
-    // Kategorie und Datum bleiben stehen — am Aktionstag werden viele
+    // Kategorie, Art und Datum bleiben stehen — am Aktionstag werden viele
     // Erinnerungen zum selben Jahrgang hintereinander eingetragen.
     setTitle("");
     setClassName("");
     setAuthorName("");
     setDescription("");
+    setMomentText("");
+    // Die Einwilligung gilt für einen Beitrag, nicht für den ganzen Nachmittag.
+    setConsent(false);
+    setConsentTried(false);
     setRank("normal");
     setCover(null);
     setGallery([]);
@@ -600,7 +756,9 @@ export function EntryForm({
     setDir("back");
     setVisited(new Set([0]));
     window.scrollTo({ top: 0, behavior: "smooth" });
-    window.setTimeout(() => titleRef.current?.focus(), 60);
+    // Der Cursor landet auf der Überschrift des ersten Schritts: Das Titelfeld
+    // ist jetzt einen Schritt weiter hinten und gerade gar nicht sichtbar.
+    window.setTimeout(() => headingRefs.current[0]?.focus(), 60);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -611,7 +769,7 @@ export function EntryForm({
 
     // Erst der komplette Durchgang: Beim ersten Mangel landet man dort, wo er
     // steht — mit Meldung und Cursor im richtigen Feld.
-    for (let i = 0; i <= LAST_STEP; i++) {
+    for (let i = 0; i <= lastStep; i++) {
       const problem = stepProblem(i);
       if (problem) {
         landOn(i, problem);
@@ -619,14 +777,27 @@ export function EntryForm({
       }
     }
 
+    /*
+     * Die Einwilligung ist keine Feldprüfung, sondern die letzte Handlung vor
+     * dem Veröffentlichen — deshalb steht sie hier für sich. Der Absende-Knopf
+     * ist ohne Haken ohnehin gesperrt; hierher kommt man nur mit der
+     * Eingabetaste, und auch dann soll klar sein, woran es liegt.
+     */
+    if (wizard && !consent) {
+      setConsentTried(true);
+      document.getElementById("entry-consent")?.focus();
+      return;
+    }
+
     const cleanTitle = title.trim();
     /*
      * Ohne Datum wird ALLES leer — die Datenbank lässt einen Monat ohne Jahr
      * ausdrücklich nicht zu (entries_month_needs_year). Weil `smart` in diesem
      * Fall gar nicht erst existiert, kann so eine Kombination hier nicht
-     * entstehen.
+     * entstehen. Ein bester Moment hat nie ein Datum: Er lebt in der
+     * Erinnerungs-Wolke, und die kennt keine Jahreszahl.
      */
-    const smart = smartDate;
+    const smart = isMoment ? null : smartDate;
 
     const uploaded: { bucket: string; path: string }[] = [];
 
@@ -691,27 +862,49 @@ export function EntryForm({
 
       const fields = {
         title: cleanTitle,
-        description: description.trim() || null,
+        description: (isMoment ? momentText.trim() : description.trim()) || null,
         category,
         class_name: showClassField ? normalizeClassName(className.trim()) || null : null,
         author_name: authorName.trim() || null,
         year: smart?.year ?? null,
         month: smart?.month ?? null,
         day: smart?.day ?? null,
-        ...rankFlags(rank, isAdmin),
-        image_path: imagePath,
-        image_paths: imagePaths,
-        audio_path: audioPath,
+        /*
+         * Bild- und Tonspalten fasst nur ein Admin-Konto an. Für Eintrag-Konten
+         * stehen sie gar nicht erst im Datensatz: Die Datenbank weist einen
+         * INSERT mit gesetztem image_path sonst ab (Migration 0016), und ein
+         * mitgeschicktes „null“ wäre eine Behauptung über etwas, das dieses
+         * Konto nicht entscheiden darf.
+         */
+        ...(isAdmin
+          ? {
+              image_path: imagePath,
+              image_paths: imagePaths,
+              audio_path: audioPath,
+            }
+          : {}),
       };
 
       if (isEdit && entry) {
+        /*
+         * Nur beim Bearbeiten wird noch über den Rang entschieden — die
+         * Schul-Meilensteine (Gründung 1971, 50 Jahre GymNW) müssen pflegbar
+         * bleiben.
+         */
         const { error: dbErr } = await supabase
           .from("entries")
-          .update(fields)
+          .update({ ...fields, ...rankFlags(rank, isAdmin) })
           .eq("id", entry.id);
         if (dbErr) throw new FriendlyError(describeDbError(dbErr.message));
         onSaved?.("updated");
       } else {
+        /*
+         * Neue Einträge kommen ohne Rang auf die Welt: is_milestone und
+         * is_important bleiben auf dem Standard `false` der Datenbank.
+         * „Wichtig wird ein Ereignis dadurch, dass mehr Leute es teilen und
+         * ihre eigene Erinnerung dazuschreiben“ — sagt die Schule, und das
+         * lässt sich nicht in einem Auswahlfeld ankreuzen.
+         */
         const payload: EntryInsert = { ...fields, created_by: session.user.id };
         const { error: dbErr } = await supabase.from("entries").insert(payload);
         if (dbErr) throw new FriendlyError(describeDbError(dbErr.message));
@@ -805,9 +998,11 @@ export function EntryForm({
         title="Gespeichert!"
         text={
           saved === "created"
-            ? smartDate
-              ? "Der Eintrag ist jetzt live auf dem Zeitstrahl — danke fürs Erinnern."
-              : "Die Erinnerung ist jetzt live — ohne Datum steht sie in der Erinnerungs-Wolke. Danke fürs Erinnern."
+            ? isMoment
+              ? "Dein Moment ist jetzt live — er steht in der Erinnerungs-Wolke. Danke fürs Erinnern."
+              : smartDate
+                ? "Der Eintrag ist jetzt live auf dem Zeitstrahl — danke fürs Erinnern."
+                : "Die Erinnerung ist jetzt live — ohne Datum steht sie in der Erinnerungs-Wolke. Danke fürs Erinnern."
             : "Die Änderungen sind jetzt auf dem Zeitstrahl."
         }
       >
@@ -846,29 +1041,46 @@ export function EntryForm({
           ? "Wird gespeichert …"
           : isEdit
             ? "Änderungen speichern"
-            : "Auf den Zeitstrahl!";
+            : isMoment
+              ? "In die Erinnerungs-Wolke!"
+              : "Auf den Zeitstrahl!";
 
-  const titleMissing = checkStep === 0 && title.trim().length === 0;
+  const checkKey = checkStep === null ? null : steps[checkStep]?.key;
+  const titleMissing = checkKey === "worum" && title.trim().length === 0;
   const dateSummary = smartDate
     ? formatSmartDate(smartDate)
     : "Ohne Datum — steht in der Erinnerungs-Wolke";
-  const descriptionPlain = richTextToPlain(description).trim();
+  const descriptionPlain = isMoment
+    ? momentText.trim()
+    : richTextToPlain(description).trim();
   const imageCount = (cover ? 1 : 0) + gallery.length;
+  const momentLeft = MOMENT_TEXT_MAX - momentText.length;
 
   /* ---------------------------------------------------------------- *
    * Der Inhalt je Schritt
    * ---------------------------------------------------------------- */
 
-  function stepContent(index: number): React.ReactNode {
-    switch (index) {
-      case 0:
+  function stepContent(key: StepKey): React.ReactNode {
+    switch (key) {
+      case "art":
+        return (
+          <KindChoice
+            value={kind}
+            onChange={chooseKind}
+            disabled={busy}
+            showRequiredError={checkKey === "art"}
+          />
+        );
+
+      case "worum":
         return (
           <>
             {/* 1 — Titel */}
             <div>
               <div className="flex items-baseline justify-between gap-3">
                 <label className="label" htmlFor="entry-title">
-                  Titel <span aria-hidden className="font-bold text-fox-deep">*</span>
+                  {isMoment ? "Dein Wort oder Thema" : "Titel"}{" "}
+                  <span aria-hidden className="font-bold text-fox-deep">*</span>
                   <span className="sr-only">(Pflichtfeld)</span>
                 </label>
                 <span aria-hidden className="hint tabular-nums">
@@ -880,7 +1092,11 @@ export function EntryForm({
                 ref={titleRef}
                 type="text"
                 className="input min-h-12"
-                placeholder="z. B. Einweihung der neuen Sporthalle"
+                placeholder={
+                  isMoment
+                    ? "z. B. Meine Einschulung"
+                    : "z. B. Einweihung der neuen Sporthalle"
+                }
                 maxLength={TITLE_MAX}
                 value={title}
                 disabled={busy}
@@ -895,7 +1111,9 @@ export function EntryForm({
                     role="alert"
                     className="note-enter text-xs font-semibold text-ink-bad"
                   >
-                    Bitte einen Titel eingeben.
+                    {isMoment
+                      ? "Bitte ein Wort oder einen kurzen Titel eingeben."
+                      : "Bitte einen Titel eingeben."}
                   </p>
                 )}
               </div>
@@ -971,7 +1189,7 @@ export function EntryForm({
           </>
         );
 
-      case 1:
+      case "wann":
         return (
           <DateChoice
             mode={dateMode}
@@ -980,23 +1198,54 @@ export function EntryForm({
             onChange={setDateText}
             inputId={DATE_INPUT_ID}
             disabled={busy}
-            showRequiredError={checkStep === 1}
+            showRequiredError={checkKey === "wann"}
           />
         );
 
-      case 2:
+      case "erzaehlen":
         return (
           <>
-            {/* 4 — Beschreibung mit Formatier-Werkzeugen */}
-            <RichTextInput
-              id="entry-description"
-              label="Beschreibung"
-              value={description}
-              onChange={setDescription}
-              maxLength={DESCRIPTION_MAX}
-              placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
-              disabled={busy}
-            />
+            {/*
+              4 — Der Text. Zwei Wege, zwei Felder: Ein Ereignis darf ein
+              kleiner Aufsatz werden, ein Wolken-Eintrag bleibt ein Satz.
+              Deshalb hier keine Formatier-Werkzeuge und ein harter Deckel.
+            */}
+            {isMoment ? (
+              <div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <label className="label" htmlFor="entry-moment-text">
+                    Deine Erinnerung
+                  </label>
+                  <span aria-hidden className="hint tabular-nums">
+                    noch {momentLeft} Zeichen
+                  </span>
+                </div>
+                <textarea
+                  id="entry-moment-text"
+                  rows={4}
+                  className="input min-h-28 leading-relaxed"
+                  placeholder="z. B. Der erste Schultag mit der Zuckertüte im Regen."
+                  maxLength={MOMENT_TEXT_MAX}
+                  value={momentText}
+                  disabled={busy}
+                  onChange={(e) => setMomentText(e.target.value)}
+                />
+                <p className="hint mt-1.5 leading-relaxed">
+                  Freiwillig und bewusst kurz: In der Wolke zählt vor allem dein
+                  Wort — {MOMENT_TEXT_MAX} Zeichen sind das Höchste.
+                </p>
+              </div>
+            ) : (
+              <RichTextInput
+                id="entry-description"
+                label="Beschreibung"
+                value={description}
+                onChange={setDescription}
+                maxLength={DESCRIPTION_MAX}
+                placeholder="Was ist passiert? Woran erinnerst du dich besonders gern?"
+                disabled={busy}
+              />
+            )}
 
             {/* 5 — Autor */}
             <div>
@@ -1043,7 +1292,14 @@ export function EntryForm({
           </>
         );
 
-      case 3:
+      case "medien":
+        /*
+         * Doppelt gesichert: Den Schritt gibt es für Eintrag-Konten gar nicht
+         * erst (stepsFor), und selbst wenn er auftauchte, käme hier nichts.
+         * Fotos ergänzt laut Datenschutzerklärung nur das Projektteam — die
+         * Datenbank weist alles andere ohnehin ab.
+         */
+        if (!isAdmin) return null;
         return (
           <>
             {/* 7 — Titelbild */}
@@ -1066,7 +1322,7 @@ export function EntryForm({
               disabled={busy}
             />
 
-            {/* 9 — Audio (nur Admin) */}
+            {/* 9 — Audio (wie Bilder: Projektteam) */}
             {isAdmin && (
               <AudioUpload
                 value={audio}
@@ -1079,7 +1335,18 @@ export function EntryForm({
           </>
         );
 
-      default:
+      default: {
+        /** Zu welchem Schritt führt „Ändern“? Im Moment-Weg gibt es weniger davon. */
+        const jump = (target: StepKey) => {
+          const at = indexOfStep(target);
+          return wizard && at >= 0 ? () => goTo(at) : undefined;
+        };
+        /** „Schritt 3“ in der Vorlesehilfe — die Nummer hängt vom Weg ab. */
+        const stepLabel = (target: StepKey) => {
+          const at = indexOfStep(target);
+          return at >= 0 ? `Schritt ${at + 1}` : "diesen Schritt";
+        };
+
         return (
           <>
             {/*
@@ -1090,7 +1357,7 @@ export function EntryForm({
             */}
             <div className="rounded-xl border border-paper-line bg-paper-sunk px-4 py-1">
               <SummaryRow
-                label="Worum es geht"
+                label={isMoment ? "Dein Moment" : "Worum es geht"}
                 value={
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
                     <span>{title.trim() || "Ohne Titel"}</span>
@@ -1103,18 +1370,22 @@ export function EntryForm({
                   </span>
                 }
                 muted={!title.trim()}
-                editLabel="Schritt 1"
-                onEdit={wizard ? () => goTo(0) : undefined}
+                editLabel={stepLabel("worum")}
+                onEdit={jump("worum")}
               />
+              {/* Ein bester Moment hat kein Datum — dann fällt die Zeile weg,
+                  statt „ohne Datum“ wie einen Mangel auszustellen. */}
+              {!isMoment && (
+                <SummaryRow
+                  label="Wann"
+                  value={dateSummary}
+                  muted={!smartDate}
+                  editLabel={stepLabel("wann")}
+                  onEdit={jump("wann")}
+                />
+              )}
               <SummaryRow
-                label="Wann"
-                value={dateSummary}
-                muted={!smartDate}
-                editLabel="Schritt 2"
-                onEdit={wizard ? () => goTo(1) : undefined}
-              />
-              <SummaryRow
-                label="Erzählung"
+                label={isMoment ? "Deine Erinnerung" : "Erzählung"}
                 value={
                   <>
                     <span className={descriptionPlain ? "" : "text-coal-faint"}>
@@ -1136,40 +1407,71 @@ export function EntryForm({
                   </>
                 }
                 muted={!descriptionPlain && !authorName.trim()}
-                editLabel="Schritt 3"
-                onEdit={wizard ? () => goTo(2) : undefined}
+                editLabel={stepLabel("erzaehlen")}
+                onEdit={jump("erzaehlen")}
               />
-              <SummaryRow
-                label="Bild und Ton"
-                value={
-                  imageCount === 0 && !audio && !keepAudioPath
-                    ? "Keine Bilder"
-                    : [
-                        imageCount === 1
-                          ? "1 Bild"
-                          : imageCount > 1
-                            ? `${imageCount} Bilder`
-                            : "",
-                        audio || keepAudioPath ? "Tonaufnahme" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")
-                }
-                muted={imageCount === 0 && !audio && !keepAudioPath}
-                editLabel="Schritt 4"
-                onEdit={wizard ? () => goTo(3) : undefined}
-              />
+              {hasMediaStep && (
+                <SummaryRow
+                  label="Bild und Ton"
+                  value={
+                    imageCount === 0 && !audio && !keepAudioPath
+                      ? "Keine Bilder"
+                      : [
+                          imageCount === 1
+                            ? "1 Bild"
+                            : imageCount > 1
+                              ? `${imageCount} Bilder`
+                              : "",
+                          audio || keepAudioPath ? "Tonaufnahme" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                  }
+                  muted={imageCount === 0 && !audio && !keepAudioPath}
+                  editLabel={stepLabel("medien")}
+                  onEdit={jump("medien")}
+                />
+              )}
             </div>
 
-            {/* 11 — Rangstufe: normal · wichtig · Meilenstein (nur Admin) */}
-            <RankChoice
-              value={rank}
-              onChange={setRank}
-              allowMilestone={isAdmin}
-              disabled={busy}
-            />
+            {/*
+              11 — Rangstufe NUR beim Bearbeiten.
+              Beim Neuanlegen gibt es sie nicht mehr: „Ereignisse werden
+              wichtiger, wenn mehr Leute sie teilen und ihre eigene Erinnerung
+              hinzufügen“ — die Bedeutung wächst also aus den Stimmen und wird
+              nicht vorab angekreuzt. Beim Bearbeiten bleibt sie, sonst ließen
+              sich die Schul-Meilensteine (Gründung 1971, 50 Jahre GymNW) nicht
+              mehr pflegen.
+            */}
+            {isEdit && (
+              <RankChoice
+                value={rank}
+                onChange={setRank}
+                allowMilestone={isAdmin}
+                disabled={busy}
+              />
+            )}
+
+            {/* 12 — Einwilligung, direkt über dem Absende-Knopf. */}
+            {wizard && (
+              <ConsentCheck
+                checked={consent}
+                onChange={(next) => {
+                  setConsent(next);
+                  if (next) setConsentTried(false);
+                }}
+                disabled={busy}
+                showError={consentTried}
+                note={
+                  isMoment
+                    ? "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — in der Erinnerungs-Wolke, mit allem, was du hier eingetragen hast."
+                    : "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — mit Titel, Text, Namen und Bildern, die du hier eingetragen hast."
+                }
+              />
+            )}
           </>
         );
+      }
     }
   }
 
@@ -1194,7 +1496,7 @@ export function EntryForm({
       {wizard && (
         <>
           <StepProgress
-            steps={STEPS}
+            steps={steps}
             current={step}
             visited={visited}
             onGo={goTo}
@@ -1202,29 +1504,29 @@ export function EntryForm({
           />
           {/* Für Screenreader: Der Titel des Schritts kommt über den Fokus. */}
           <p aria-live="polite" className="sr-only">
-            Schritt {step + 1} von {STEPS.length}
+            Schritt {step + 1} von {steps.length}
           </p>
         </>
       )}
 
       <div className="step-flow" data-dir={wizard ? dir : undefined}>
-        {STEPS.map((definition, index) => {
+        {steps.map((definition, index) => {
           const problem = checkStep === index ? stepProblem(index) : null;
           const open = !wizard || index === step;
           return (
             <section
               key={definition.key}
-              id={panelId(index)}
+              id={panelId(definition.key)}
               hidden={!open}
               className={
                 wizard
                   ? "step-panel"
                   : "step-panel border-t border-paper-line pt-7 first:border-0 first:pt-0"
               }
-              aria-labelledby={`${panelId(index)}-title`}
+              aria-labelledby={`${panelId(definition.key)}-title`}
             >
               <h2
-                id={`${panelId(index)}-title`}
+                id={`${panelId(definition.key)}-title`}
                 ref={(node) => {
                   headingRefs.current[index] = node;
                 }}
@@ -1235,7 +1537,7 @@ export function EntryForm({
               </h2>
               <p className="hint mt-1 leading-relaxed">{definition.lead}</p>
 
-              <div className="mt-5 space-y-6">{stepContent(index)}</div>
+              <div className="mt-5 space-y-6">{stepContent(definition.key)}</div>
 
               {problem && (
                 <p
@@ -1260,7 +1562,7 @@ export function EntryForm({
                       Zurück
                     </button>
                   )}
-                  {index < LAST_STEP ? (
+                  {index < lastStep ? (
                     <button
                       type="button"
                       className="btn-accent min-h-12 flex-1 text-base"
@@ -1274,7 +1576,8 @@ export function EntryForm({
                     <button
                       type="submit"
                       className="btn-accent min-h-12 flex-1 text-base"
-                      disabled={busy || removed}
+                      disabled={busy || removed || !consent}
+                      aria-describedby={!consent ? "entry-submit-grund" : undefined}
                     >
                       {busy && phase !== "deleting" && (
                         <span
@@ -1286,6 +1589,16 @@ export function EntryForm({
                     </button>
                   )}
                 </div>
+              )}
+
+              {/*
+                Ein grauer Knopf ohne Begründung ist eine Sackgasse — vor allem
+                auf dem Handy, wo der Haken zwei Fingerbreit darüber steht.
+              */}
+              {wizard && index === lastStep && !consent && (
+                <p id="entry-submit-grund" className="hint mt-2.5 leading-relaxed">
+                  Der Knopf wird aktiv, sobald du oben zugestimmt hast.
+                </p>
               )}
             </section>
           );
@@ -1315,7 +1628,7 @@ export function EntryForm({
         </div>
       )}
 
-      {wizard && step === LAST_STEP && (
+      {wizard && step === lastStep && (
         <p className="hint">
           Mit <span className="font-bold text-fox-deep">*</span> markierte Felder
           sind Pflichtfelder.

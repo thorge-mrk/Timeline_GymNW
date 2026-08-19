@@ -1,8 +1,9 @@
 "use client";
 
-import { useId, useMemo, type CSSProperties } from "react";
+import { useMemo, useRef } from "react";
 import { categoryPillStyle } from "@/lib/categories";
-import type { Entry } from "@/lib/types";
+import type { Entry, Voice } from "@/lib/types";
+import MemoryCloudFull, { type CloudWord } from "./MemoryCloudFull";
 import "./memoryCloud.css";
 
 interface MemoryCloudProps {
@@ -10,17 +11,21 @@ interface MemoryCloudProps {
   entries: Entry[];
   /** Wie viele Stimmen hängen an diesem Eintrag? (0 = nur der Eintrag selbst) */
   voiceCount: (entryId: string) => number;
-  /** Eintrag im Detail-Fenster öffnen. */
+  /** Alle Stimmen eines Themas — für das Panel in der Vollansicht. */
+  voicesFor?: (entryId: string) => Voice[];
+  /** Eintrag im Detail-Fenster öffnen (aus der Vollansicht heraus). */
   onOpen: (entry: Entry) => void;
-  /** Steuerung von außen, damit der Zeitstrahl weiß, wie viel Platz die Wolke nimmt. */
+  /** Steht die Wolke groß über dem Zeitstrahl? */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Nur gesetzt, wenn jemand angemeldet ist — dann darf man dazuschreiben. */
+  onAddVoice?: (entry: Entry) => void;
 }
 
 /** Ab hier wird der Titel gekürzt. Der volle Text bleibt in `title` und `aria-label`. */
 const MAX_CHARS = 30;
 
-/** So viele Themen zeigt das zugeklappte Band als Vorgeschmack. */
+/** So viele Themen zeigt das Band als Vorgeschmack. */
 const PEEK_COUNT = 3;
 
 /**
@@ -28,18 +33,30 @@ const PEEK_COUNT = 3;
  * dann stehen sie alle auf derselben, angenehm mittleren Größe. Eine
  * erfundene Staffelung wäre gelogen, und alles auf Minimum wäre Geflüster.
  */
-const FLAT_WEIGHT = 0.3;
+const FLAT_WEIGHT = 0.35;
 
-/** Ein Wort in der Wolke. */
-interface CloudWord {
-  entry: Entry;
-  /** Erinnerungen insgesamt: der Eintrag selbst plus seine Stimmen. */
-  memories: number;
-  /** 0 … 1 — Stelle zwischen kleinster und größter Schrift. */
-  weight: number;
-  /** Gekürzter Anzeigetext. */
-  label: string;
-}
+/**
+ * Ab so vielen Erinnerungen wächst ein Wort nicht weiter.
+ *
+ * Ohne Deckel erschlägt ein einziges Massenthema die Wolke: Erinnern sich
+ * dreißig Menschen an die Bläserklasse und drei an den Schulhof-Kastanienbaum,
+ * dann steht der Kastanienbaum als unlesbarer Krümel neben einem Plakat. Der
+ * Deckel sagt: „ab acht ist es ein großes Thema" — wie viel größer genau,
+ * verrät die Zahl an der Pille und das Panel. Zusammen mit der Wurzel unten
+ * bleibt der Unterschied zwischen 1 und 8 gut sichtbar und alles darüber
+ * angenehm ruhig.
+ */
+const MEMORY_CAP = 8;
+
+/**
+ * So viele Wörter zeigt die Wolke höchstens.
+ *
+ * An einem vollen Aktionstag können hunderte datumslose Einträge zusammen-
+ * kommen; als Wolke wäre das Konfetti, und das Anordnen würde spürbar dauern.
+ * Gezeigt werden die lautesten — der Rest steht weiterhin im Zeitstrahl-Filter
+ * und wird beim nächsten Laden neu gewichtet.
+ */
+const MAX_WORDS = 60;
 
 /**
  * „Berlinfahrt, 12 Klasse und Coronazeiten“ ist eine schöne Erinnerung und ein
@@ -58,55 +75,25 @@ function shorten(title: string): string {
 }
 
 /**
- * Reihenfolge der Wörter — der eigentliche „Wolken-Algorithmus“.
- *
- * Ein echtes Wortwolken-Verfahren (Spirale, Kollisionsprüfung) müsste jedes
- * Wort erst ausmessen und bei jeder Breitenänderung neu rechnen; auf dem Handy
- * käme dabei zuverlässig Kraut und Rüben heraus. Stattdessen fließen die
- * Wörter ganz normal um (`flex-wrap`) — die Wolkenform entsteht über die
- * REIHENFOLGE:
- *
- *   1. absteigend nach Stimmen sortieren, bei Gleichstand nach Alter und
- *      zuletzt nach id — dieselbe Datenlage ergibt damit IMMER dieselbe
- *      Reihenfolge, egal in welcher Reihenfolge die Einträge hereinkommen
- *   2. von der Mitte nach außen austeilen: das lauteste Thema landet in der
- *      Mitte, die leiseren wandern abwechselnd nach links und rechts
- *
- * Ergebnis: innen groß und dicht, außen klein und luftig — eine Wolke, und
- * kein Zufall. `Math.random()` kommt hier bewusst nicht vor: Wer die Seite neu
- * lädt, soll sein Thema an derselben Stelle wiederfinden.
- */
-function cloudOrder(words: CloudWord[]): CloudWord[] {
-  const sorted = [...words].sort((a, b) => {
-    if (b.memories !== a.memories) return b.memories - a.memories;
-    const byAge = a.entry.created_at.localeCompare(b.entry.created_at);
-    if (byAge !== 0) return byAge;
-    return a.entry.id.localeCompare(b.entry.id);
-  });
-
-  const out: CloudWord[] = new Array<CloudWord>(sorted.length);
-  let left = Math.floor((sorted.length - 1) / 2);
-  let right = left + 1;
-  for (let i = 0; i < sorted.length; i++) {
-    if (i % 2 === 0) out[left--] = sorted[i];
-    else out[right++] = sorted[i];
-  }
-  return out;
-}
-
-/**
  * Erinnerungs-Wolke — das Zuhause aller Erinnerungen ohne Jahreszahl.
  *
  * „Meine Einschulung“, „der Amerika-Austausch“, „die Bläserklasse“: Die
  * Hälfte der Menschen weiß noch genau, WAS war, aber nicht mehr WANN. Auf der
  * Achse hätten diese Einträge keinen ehrlichen Platz — hier haben sie einen.
  *
- * Das Band liegt unter dem Zeitstrahl und ist zugeklappt nur eine Zeile hoch:
- * Solange niemand danach fragt, nimmt es der Achse keinen Millimeter weg.
- * Aufgeklappt fährt es wie eine Schublade heraus (deshalb `--ease-drawer`,
- * nicht `--ease-out-strong`) und zeigt die Wolke über die volle Breite.
+ * ZWEI ZUSTÄNDE, mehr nicht:
  *
- * Gelesen wird sie über zwei Kanäle gleichzeitig:
+ *   BAND         Eine schmale Leiste am unteren Rand des Zeitstrahls:
+ *                „Erinnerungen ohne Datum · 14 Beiträge“, dazu die drei
+ *                lautesten Themen als Vorgeschmack. Solange niemand danach
+ *                fragt, nimmt sie der Achse eine Zeile weg und sonst nichts.
+ *
+ *   VOLLANSICHT  Ein Klick, und die Wolke steht bildschirmfüllend über dem
+ *                Zeitstrahl (`MemoryCloudFull`): zentriert im Raum verteilt,
+ *                sanft schwebend, zum Zoomen und Schieben, mit den Stimmen
+ *                hinter jedem Wort.
+ *
+ * Gelesen wird die Wolke über zwei Kanäle gleichzeitig:
  *   Größe → wie viele Menschen sich an dieses Thema erinnern
  *   Farbe → Kategorie, dieselben Pillen-Farben wie an der Achse
  *
@@ -116,14 +103,17 @@ function cloudOrder(words: CloudWord[]): CloudWord[] {
 export default function MemoryCloud({
   entries,
   voiceCount,
+  voicesFor,
   onOpen,
   open,
   onOpenChange,
+  onAddVoice,
 }: MemoryCloudProps): React.ReactElement | null {
-  const panelId = useId();
+  /** Das Band bekommt den Fokus zurück, wenn die Vollansicht schließt. */
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
-  const words = useMemo(() => {
-    const counted: CloudWord[] = entries.map((entry) => ({
+  const words = useMemo<CloudWord[]>(() => {
+    const counted = entries.map((entry) => ({
       entry,
       memories: Math.max(1, voiceCount(entry.id) + 1),
       weight: 0,
@@ -133,161 +123,142 @@ export default function MemoryCloud({
     if (!counted.length) return counted;
 
     /*
+     * Reihenfolge: lautestes Thema zuerst. Bei Gleichstand entscheidet das
+     * Alter, zuletzt die id — dieselbe Datenlage ergibt damit IMMER dieselbe
+     * Reihenfolge, egal wie die Einträge hereinkommen. Die Vollansicht setzt
+     * in genau dieser Reihenfolge von der Mitte nach außen; ohne feste
+     * Sortierung stünde die Wolke bei jedem Laden anders da.
+     */
+    counted.sort((a, b) => {
+      if (b.memories !== a.memories) return b.memories - a.memories;
+      const byAge = a.entry.created_at.localeCompare(b.entry.created_at);
+      if (byAge !== 0) return byAge;
+      return a.entry.id.localeCompare(b.entry.id);
+    });
+
+    const shown = counted.slice(0, MAX_WORDS);
+
+    /*
      * Wurzel statt gerader Linie: Zwischen 1 und 2 Stimmen liegt gefühlt ein
      * riesiger Unterschied, zwischen 11 und 12 kaum einer. Linear skaliert
      * würde ein einzelnes lautes Thema alle anderen zu Fußnoten machen.
+     * Über `MEMORY_CAP` hinaus wächst gar nichts mehr.
      */
     let low = Infinity;
     let high = 0;
-    for (const w of counted) {
-      if (w.memories < low) low = w.memories;
-      if (w.memories > high) high = w.memories;
+    for (const word of shown) {
+      const capped = Math.min(word.memories, MEMORY_CAP);
+      if (capped < low) low = capped;
+      if (capped > high) high = capped;
     }
     const span = Math.sqrt(high) - Math.sqrt(low);
-    for (const w of counted) {
-      w.weight =
-        span > 0 ? (Math.sqrt(w.memories) - Math.sqrt(low)) / span : FLAT_WEIGHT;
+    for (const word of shown) {
+      const capped = Math.min(word.memories, MEMORY_CAP);
+      word.weight =
+        span > 0 ? (Math.sqrt(capped) - Math.sqrt(low)) / span : FLAT_WEIGHT;
     }
 
-    return cloudOrder(counted);
+    return shown;
   }, [entries, voiceCount]);
-
-  /** Die lautesten Themen — sie stehen im zugeklappten Band als Vorgeschmack. */
-  const peek = useMemo(
-    () => [...words].sort((a, b) => b.memories - a.memories).slice(0, PEEK_COUNT),
-    [words]
-  );
 
   if (!words.length) return null;
 
-  const countLabel = words.length === 1 ? "1 Beitrag" : `${words.length} Beiträge`;
+  const total = entries.length;
+  const countLabel = total === 1 ? "1 Beitrag" : `${total} Beiträge`;
 
   return (
-    <section
-      data-state={open ? "open" : "closed"}
-      aria-label="Erinnerungen ohne Datum"
-      className="mc-root shrink-0 border-t border-paper-line bg-paper-card"
-    >
-      {/* ------------------------------------------------------- Das Band */}
-      <button
-        type="button"
-        onClick={() => onOpenChange(!open)}
-        aria-expanded={open}
-        aria-controls={panelId}
-        className="mc-toggle flex w-full cursor-pointer items-center gap-2.5 px-4 py-2.5 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-fox sm:gap-3 sm:px-5"
+    <>
+      <section
+        aria-label="Erinnerungen ohne Datum"
+        className="mc-root shrink-0 border-t border-paper-line bg-paper-card"
       >
-        {/* Eine Wolke. Mehr Erklärung braucht es nicht. */}
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 20 20"
-          fill="none"
-          aria-hidden="true"
-          className="shrink-0 text-coal-faint"
+        <button
+          ref={toggleRef}
+          type="button"
+          onClick={() => onOpenChange(true)}
+          aria-haspopup="dialog"
+          aria-label={`Erinnerungen ohne Datum, ${countLabel}, Wortwolke groß öffnen`}
+          className="mc-toggle flex w-full cursor-pointer items-center gap-2.5 px-4 py-2.5 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-fox sm:gap-3 sm:px-5"
         >
-          <path
-            d="M5.6 15.5h8.9a3.4 3.4 0 0 0 .5-6.76 4.9 4.9 0 0 0-9.24-1.2 3.6 3.6 0 0 0-.16 7.96Z"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinejoin="round"
-          />
-        </svg>
-
-        <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span className="truncate text-[13px] leading-5 font-semibold text-coal">
-            Erinnerungen ohne Datum
-          </span>
-          <span aria-hidden="true" className="shrink-0 text-coal-faint">
-            ·
-          </span>
-          <span className="shrink-0 text-[12px] leading-5 text-coal-soft tabular-nums">
-            {countLabel}
-          </span>
-        </span>
-
-        {/*
-          Vorgeschmack: die drei lautesten Themen in ihrer Kategoriefarbe.
-          Auf dem Handy ist dafür kein Platz — dort führt allein die Zahl.
-          Beim Aufklappen bleiben sie stehen und blenden nur aus, sonst würde
-          das Band beim Öffnen zucken.
-        */}
-        <span
-          aria-hidden="true"
-          className="mc-peek hidden shrink-0 items-center gap-1.5 sm:flex"
-        >
-          {peek.map((word) => (
-            <span
-              key={word.entry.id}
-              className="max-w-[11rem] truncate rounded-full border px-2 py-0.5 text-[11px] leading-4 font-semibold"
-              style={categoryPillStyle(word.entry.category)}
-            >
-              {word.label}
-            </span>
-          ))}
-        </span>
-
-        <span
-          aria-hidden="true"
-          className="mc-chevron flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-coal-soft"
-        >
-          {/* Zeigt nach unten: dort geht die Wolke auf. Aufgeklappt dreht sich
-              das Zeichen und zeigt zurück nach oben — Weg hin, Weg zurück. */}
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+          {/* Eine Wolke. Mehr Erklärung braucht es nicht. */}
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="none"
+            aria-hidden="true"
+            className="shrink-0 text-coal-faint"
+          >
             <path
-              d="M3.5 6L8 10.5 12.5 6"
+              d="M5.6 15.5h8.9a3.4 3.4 0 0 0 .5-6.76 4.9 4.9 0 0 0-9.24-1.2 3.6 3.6 0 0 0-.16 7.96Z"
               stroke="currentColor"
-              strokeWidth="1.7"
-              strokeLinecap="round"
+              strokeWidth="1.4"
               strokeLinejoin="round"
             />
           </svg>
-        </span>
-      </button>
 
-      {/* ---------------------------------------------------- Die Schublade */}
-      {/*
-        Zugeklappt ist die Wolke `inert`: kein Tabstopp, keine Vorlesestimme.
-        Sie ist dann nur zusammengeschoben, nicht abgebaut — der Browser muss
-        beim Öffnen also nichts neu bauen, und die Wörter stehen sofort da.
-      */}
-      <div id={panelId} className="mc-panel" inert={!open}>
-        <div className="mc-clip">
-          <div className="mc-scroll px-4 pt-1 pb-5 sm:px-5 sm:pb-6">
-            <p className="mb-3 text-[12px] leading-5 text-coal-faint">
-              Diese Erinnerungen haben keine Jahreszahl — je größer ein Thema,
-              desto mehr Menschen erinnern sich daran.
-            </p>
+          <span aria-hidden="true" className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <span className="truncate text-[13px] leading-5 font-semibold text-coal">
+              Erinnerungen ohne Datum
+            </span>
+            <span className="shrink-0 text-coal-faint">·</span>
+            <span className="shrink-0 text-[12px] leading-5 text-coal-soft tabular-nums">
+              {countLabel}
+            </span>
+          </span>
 
-            <div className="mc-cloud flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 sm:gap-x-2.5 sm:gap-y-2">
-              {words.map((word) => (
-                <button
-                  key={word.entry.id}
-                  type="button"
-                  onClick={() => onOpen(word.entry)}
-                  title={word.entry.title}
-                  aria-label={`${word.entry.title}, ${
-                    word.memories === 1
-                      ? "1 Erinnerung"
-                      : `${word.memories} Erinnerungen`
-                  }, öffnen`}
-                  className="mc-word max-w-full cursor-pointer overflow-hidden rounded-full border font-semibold text-ellipsis whitespace-nowrap"
-                  style={
-                    {
-                      ...categoryPillStyle(word.entry.category),
-                      "--mc-w": word.weight.toFixed(3),
-                    } as CSSProperties
-                  }
-                >
-                  {word.label}
-                  {word.memories > 1 && (
-                    <span className="mc-count tabular-nums"> ·{word.memories}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
+          {/*
+            Vorgeschmack: die drei lautesten Themen in ihrer Kategoriefarbe.
+            Auf dem Handy ist dafür kein Platz — dort führt allein die Zahl.
+          */}
+          <span
+            aria-hidden="true"
+            className="mc-peek hidden shrink-0 items-center gap-1.5 sm:flex"
+          >
+            {words.slice(0, PEEK_COUNT).map((word) => (
+              <span
+                key={word.entry.id}
+                className="max-w-[11rem] truncate rounded-full border px-2 py-0.5 text-[11px] leading-4 font-semibold"
+                style={categoryPillStyle(word.entry.category)}
+              >
+                {word.label}
+              </span>
+            ))}
+          </span>
+
+          {/*
+            Zwei Pfeile, die auseinanderstreben: Was gleich passiert, ist kein
+            Aufklappen einer Schublade, sondern ein Aufgehen auf den ganzen
+            Bildschirm. Das Zeichen soll dasselbe versprechen.
+          */}
+          <span
+            aria-hidden="true"
+            className="mc-grow flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-coal-soft"
+          >
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M6.2 2.5H2.5v3.7M9.8 2.5h3.7v3.7M6.2 13.5H2.5V9.8M9.8 13.5h3.7V9.8"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </button>
+      </section>
+
+      {open && (
+        <MemoryCloudFull
+          words={words}
+          total={total}
+          voicesFor={voicesFor}
+          onOpenEntry={onOpen}
+          onAddVoice={onAddVoice}
+          onClose={() => onOpenChange(false)}
+          returnFocus={toggleRef}
+        />
+      )}
+    </>
   );
 }

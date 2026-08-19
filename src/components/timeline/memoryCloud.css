@@ -1,18 +1,24 @@
 /*
- * Erinnerungs-Wolke — das aufklappbare Band unter dem Zeitstrahl.
+ * Erinnerungs-Wolke — Band am Zeitstrahl (`mc-`) und Vollansicht (`mcf-`).
  *
- * Eigener Präfix `mc-`; alles hier gehört zu MemoryCloud.tsx und zu
- * niemandem sonst. Es steht nur, was Tailwind-Utilities nicht sauber
- * ausdrücken können: die Schublade, die Schriftgröße als Rechnung, Hover
- * hinter `(hover: hover) and (pointer: fine)` und der Druck.
+ * Eigene Präfixe; alles hier gehört zu MemoryCloud.tsx, MemoryCloudFull.tsx
+ * und VoicePanel.tsx und zu niemandem sonst. Es steht nur, was Tailwind-
+ * Utilities nicht sauber ausdrücken können: die Schwebe- und Einlauf-
+ * Bewegung, die Pillenform als Rechnung in `em`, Hover hinter
+ * `(hover: hover) and (pointer: fine)` und der Druck.
  *
  * Kurven (aus globals.css):
  *   --ease-out-strong  Ein-/Ausgänge und kurze Reaktionen
- *   --ease-drawer      das Aufziehen der Schublade
+ *   --ease-drawer      alles, was hereinfährt
+ *
+ * BEWEGT WIRD AUSSCHLIESSLICH `transform` UND `opacity`. Das ist hier keine
+ * Stilfrage: Die Wolke soll am Aktionstag stundenlang auf einem Beamer stehen.
+ * Alles andere — Breite, Höhe, Position, Schatten in Schleifen — würde den
+ * Rechner bei jedem Bild neu rechnen lassen und ihn heiß machen.
  */
 
 /* ========================================================================== */
-/*  Das Band selbst                                                           */
+/*  Das Band unter dem Zeitstrahl                                             */
 /* ========================================================================== */
 
 .mc-toggle {
@@ -30,151 +36,344 @@
  * über die volle Breite, der beim Tippen schrumpft, sieht nach Fehler aus.
  * Dieselbe Entscheidung wie bei der Zoom-Leiste.
  */
-.mc-chevron {
-  transition: transform 260ms var(--ease-drawer);
-}
-
-.mc-root[data-state="open"] .mc-chevron {
-  transform: rotate(180deg);
-}
-
-.mc-toggle:active .mc-chevron {
-  transform: scale(0.88);
-  transition-duration: 110ms;
-}
-
-.mc-root[data-state="open"] .mc-toggle:active .mc-chevron {
-  transform: rotate(180deg) scale(0.88);
-}
-
-/*
- * Der Vorgeschmack im Band bleibt beim Aufklappen stehen und blendet nur aus.
- * Würde er verschwinden, sprängen Zahl und Zeichen daneben eine Spur zur
- * Seite — eine Bewegung, die niemand bestellt hat.
- */
-.mc-peek {
-  transition: opacity 160ms var(--ease-out-strong);
-}
-
-.mc-root[data-state="open"] .mc-peek {
-  opacity: 0;
-}
-
-/* ========================================================================== */
-/*  Schublade                                                                 */
-/* ========================================================================== */
-
-/*
- * Das Aufklappen läuft über `grid-template-rows: 0fr → 1fr`. Hier wird
- * ausnahmsweise doch Layout bewegt statt nur `transform`, und zwar mit
- * Absicht: Das Band liegt IM Fluss und muss dem Zeitstrahl echten Platz
- * abnehmen. Ein reines Einblenden würde die Höhe springen lassen, und genau
- * dieser Sprung ist das, was man auf einer Wand hinter zwanzig Leuten sieht.
- * Bewegt wird deshalb eine einzige Eigenschaft, niemals `all` — und die
- * Wörter darin behalten ihre Breite, wickeln sich also während der Bewegung
- * nicht neu um.
- */
-.mc-panel {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 300ms var(--ease-drawer);
-}
-
-.mc-root[data-state="open"] .mc-panel {
-  grid-template-rows: 1fr;
-}
-
-/* Der Beschnitt der Schublade. `min-height: 0` macht 0fr überhaupt erst wirksam. */
-.mc-clip {
-  min-height: 0;
-  overflow: hidden;
-}
-
-/*
- * Der Inhalt kommt einen Tick nach der Schublade — erst öffnet sich etwas,
- * dann ist etwas darin. Umgekehrt wäre es ein Aufblitzen.
- */
-.mc-scroll {
-  max-height: 42dvh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity 160ms var(--ease-out-strong),
-    transform 260ms var(--ease-drawer);
-}
-
-.mc-root[data-state="open"] .mc-scroll {
-  opacity: 1;
-  transform: translateY(0);
-  transition-delay: 70ms;
-}
-
-/* ========================================================================== */
-/*  Wortgrößen                                                                */
-/* ========================================================================== */
-
-/*
- * Die Schriftgröße ist eine Rechnung, kein Sprungtabellen-Wert: Die
- * Komponente setzt je Wort nur `--mc-w` (0 … 1, aus der Zahl der Stimmen),
- * die Grenzen stehen hier. Dadurch wächst die Wolke mit dem Bildschirm, ohne
- * dass JavaScript beim Größerziehen irgendetwas nachmessen müsste — auf dem
- * Beamer stehen dieselben Wörter, nur größer.
- */
-.mc-cloud {
-  --mc-min: 0.9375rem; /* 15px */
-  --mc-max: 1.625rem; /* 26px */
-}
-
-@media (min-width: 640px) {
-  .mc-cloud {
-    --mc-min: 1rem; /* 16px */
-    --mc-max: 2.125rem; /* 34px */
-  }
-}
-
-@media (min-width: 1280px) {
-  .mc-cloud {
-    --mc-min: 1.0625rem; /* 17px */
-    --mc-max: 2.75rem; /* 44px */
-  }
-}
-
-.mc-word {
-  font-size: calc(var(--mc-min) + var(--mc-w, 0) * (var(--mc-max) - var(--mc-min)));
-  /* Alles am Wort ist in `em` bemessen, damit ein großes Wort auch großzügig
-     gepolstert ist und ein kleines knapp — sonst sehen die kleinen aufgebläht
-     aus. */
-  padding: 0.24em 0.68em;
-  line-height: 1.18;
-  transition:
-    transform 150ms var(--ease-out-strong),
-    box-shadow 150ms var(--ease-out-strong);
+.mc-grow {
+  transition: transform 200ms var(--ease-out-strong);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .mc-word:hover {
-    transform: translateY(-1px);
+  .mc-toggle:hover .mc-grow {
+    transform: scale(1.12);
+  }
+}
+
+.mc-toggle:active .mc-grow {
+  transform: scale(0.9);
+  transition-duration: 110ms;
+}
+
+/* ========================================================================== */
+/*  Vollansicht — die Fläche                                                  */
+/* ========================================================================== */
+
+/*
+ * Papier, kein Schleier: Die Wolke ist eine eigene Ansicht und kein Fenster,
+ * das über dem Zeitstrahl schwebt. Ein durchscheinender Hintergrund mit
+ * `backdrop-filter` wäre außerdem genau die Sorte Kosten, die man auf einer
+ * Wand stundenlang bezahlt — die Weichzeichnung würde bei jedem Bild neu
+ * berechnet, obwohl sich dahinter nichts bewegt.
+ *
+ * Der warme Schimmer in der Mitte ist ein statischer Verlauf: Er kostet
+ * einmal beim Zeichnen und nie wieder, und er gibt der Wolke einen Ort, an
+ * dem sie zu leuchten scheint.
+ */
+.mcf-root {
+  background:
+    radial-gradient(
+      118% 76% at 50% 40%,
+      color-mix(in srgb, var(--color-fox) 9%, transparent),
+      transparent 62%
+    ),
+    var(--color-paper);
+  animation: mcf-veil-in 220ms var(--ease-out-strong) both;
+}
+
+.mcf-root[data-state="closing"] {
+  animation: mcf-veil-out 170ms var(--ease-out-strong) both;
+}
+
+@keyframes mcf-veil-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mcf-veil-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.mcf-bar {
+  border-bottom: 1px solid var(--color-paper-line);
+  background-color: var(--color-paper-card);
+}
+
+/* Der Weg zurück ist der größte Knopf — auch für den Daumen. */
+.mcf-back {
+  min-height: 48px;
+}
+
+/*
+ * Die Bühne fängt die Gesten ab. `touch-action: none` ist dabei das
+ * Entscheidende: Ohne diese Zeile nimmt der Browser das Wischen und Kneifen
+ * für sich (Seite scrollen, Seite zoomen), und die Wolke bekäme nur noch
+ * Reste zu sehen.
+ */
+.mcf-stage {
+  touch-action: none;
+  cursor: grab;
+}
+
+.mcf-stage[data-grab="true"] {
+  cursor: grabbing;
+}
+
+/*
+ * Die Welt, in der die Wörter stehen. Sie wird als Ganzes geschoben und
+ * gezoomt — ein einziges `transform` für die ganze Wolke statt sechzig.
+ *
+ * `will-change` steht bewusst NUR während des Ziehens: Eine dauerhaft
+ * hochgereichte Ebene über den ganzen Bildschirm kostet Speicher, auch wenn
+ * gerade niemand etwas anfasst.
+ */
+.mcf-world {
+  transform-origin: 0 0;
+}
+
+/*
+ * Nur für die geführte Fahrt, wenn das Panel aufgeht — beim Ziehen mit dem
+ * Finger wäre eine Übergangszeit genau das, was sich träge anfühlt.
+ */
+.mcf-world[data-glide="true"] {
+  transition: transform 380ms var(--ease-drawer);
+}
+
+.mcf-stage[data-grab="true"] .mcf-world {
+  will-change: transform;
+}
+
+/* ========================================================================== */
+/*  Die Wörter                                                                */
+/* ========================================================================== */
+
+/*
+ * Drei Ebenen je Wort, und jede bewegt ihr eigenes `transform` — mehr als
+ * eine Bewegung auf demselben Element ginge nicht, die letzte gewänne:
+ *
+ *   .mcf-word   der Kasten (Ort und Größe kommen aus der Anordnung).
+ *               Hier läuft das EINMALIGE Hereinkommen.
+ *   .mcf-float  das endlose Schweben.
+ *   .mcf-pill   die sichtbare Pille. Hier reagiert Hover und Druck.
+ */
+.mcf-word {
+  border: 0;
+  padding: 0;
+  background: none;
+  border-radius: 999px;
+  animation: mcf-arrive 440ms var(--ease-out-strong) both;
+}
+
+/*
+ * Hereinkommen: aus 86 % auf 100 %, nicht aus dem Nichts — nichts in der
+ * echten Welt erscheint aus einem Punkt. Die Staffelung setzt die Komponente
+ * je Wort (`animation-delay`), und weil die Anordnung von innen nach außen
+ * setzt, läuft die Wolke von der Mitte her auf.
+ */
+@keyframes mcf-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * Das Schweben. Vier Stationen auf einer kleinen, geschlossenen Schleife —
+ * kein Hin und Her, sondern ein Treiben. Die Auslenkung liegt bei höchstens
+ * vier bis fünf Pixeln (`--mcf-dx`, `--mcf-dy` kommen aus der Eintrags-id),
+ * die Umlaufzeit zwischen elf und zwanzig Sekunden, und jedes Wort startet
+ * über einen negativen `animation-delay` an einer anderen Stelle der
+ * Schleife. Deshalb wippt nichts im Gleichtakt: Staub im Sonnenlicht, kein
+ * Bildschirmschoner.
+ *
+ * Die Auslenkung ist mit Absicht kleiner als der Sicherheitsabstand der
+ * Anordnung (16 px) — zwei Wörter können sich also nie berühren, egal wie
+ * lange die Wolke läuft.
+ */
+.mcf-float {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: mcf-drift 14s cubic-bezier(0.37, 0, 0.63, 1) infinite both;
+}
+
+@keyframes mcf-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  25% {
+    transform: translate3d(var(--mcf-dx, 0px), calc(var(--mcf-dy, 0px) * -1), 0);
+  }
+  50% {
+    transform: translate3d(
+      calc(var(--mcf-dx, 0px) * 0.25),
+      calc(var(--mcf-dy, 0px) * -1.3),
+      0
+    );
+  }
+  75% {
+    transform: translate3d(
+      calc(var(--mcf-dx, 0px) * -0.75),
+      calc(var(--mcf-dy, 0px) * -0.45),
+      0
+    );
+  }
+}
+
+/*
+ * Die Pille. Alles an ihr ist in `em` bemessen, damit ein großes Wort auch
+ * großzügig gepolstert ist und ein kleines knapp — sonst sehen die kleinen
+ * aufgebläht aus. Breite und Höhe kommen von außen; was nicht hineinpasst,
+ * wird mit Auslassungspunkten gekürzt (der volle Titel steht im `title`).
+ */
+.mcf-pill {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0 0.62em;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 999px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    transform 170ms var(--ease-out-strong),
+    box-shadow 170ms var(--ease-out-strong);
+}
+
+.mcf-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Die Zahl gehört zum Wort, nicht daneben — also wächst sie mit. */
+.mcf-count {
+  flex-shrink: 0;
+  font-size: 0.62em;
+  opacity: 0.62;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mcf-word:hover .mcf-pill {
+    transform: scale(1.05);
     box-shadow: var(--shadow-card);
   }
 }
 
 /* Nach der Hover-Regel notiert, damit der Druck sie überschreibt. */
-.mc-word:active {
+.mcf-word:active .mcf-pill {
   transform: scale(0.97);
-  transition-duration: 100ms;
+  transition-duration: 110ms;
+}
+
+/*
+ * Das offene Wort. Ein Ring in Fuchs sagt „von hier kommen die Stimmen im
+ * Panel" — und das Schweben hält an: Was man gerade liest, soll stillstehen.
+ */
+.mcf-word[data-selected] .mcf-pill {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--color-fox) 55%, transparent),
+    var(--shadow-card-lg);
+}
+
+.mcf-word[data-selected] .mcf-float {
+  animation-play-state: paused;
 }
 
 /* Der globale Fokusring rundet auf 8 px ab — ein Wort bleibt rund. */
-.mc-word:focus-visible {
+.mcf-word:focus-visible {
   border-radius: 999px;
 }
 
-/* Die Zahl neben dem Wort wächst mit: sie gehört zum Wort, nicht daneben. */
-.mc-count {
-  font-size: 0.62em;
-  opacity: 0.62;
+/* ========================================================================== */
+/*  Das Stimmen-Panel                                                         */
+/* ========================================================================== */
+
+/*
+ * Schmal am Bildschirm eine Schublade von unten, breit eine Spalte am rechten
+ * Rand. Beides LIEGT ÜBER der Wolke und schiebt sie nicht zusammen: Würde die
+ * Bühne schmaler, müsste die ganze Anordnung neu gerechnet werden und die
+ * Wörter sprängen bei jedem Klick an neue Plätze.
+ */
+.mcf-panel {
+  inset: auto 0 0 0;
+  max-height: 62%;
+  animation: mcf-sheet-up 280ms var(--ease-drawer) both;
+}
+
+/* Zwei Klassen — schlägt die Rundung von `.card` sicher, unabhängig von der
+   Reihenfolge der Stilblätter. */
+.mcf-root .mcf-panel {
+  border-radius: 1rem 1rem 0 0;
+}
+
+@keyframes mcf-sheet-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 1024px) {
+  .mcf-panel {
+    inset: 0.875rem 0.875rem auto auto;
+    width: 23rem;
+    max-height: calc(100% - 1.75rem);
+    animation: mcf-sheet-in 280ms var(--ease-drawer) both;
+  }
+
+  .mcf-root .mcf-panel {
+    border-radius: 1rem;
+  }
+
+  @keyframes mcf-sheet-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
+.mcf-x {
+  transition:
+    background-color 160ms var(--ease-out-strong),
+    color 160ms var(--ease-out-strong),
+    transform 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mcf-x:hover {
+    background-color: var(--color-paper-sunk);
+    color: var(--color-coal);
+  }
+}
+
+.mcf-x:active {
+  transform: scale(0.92);
+  transition-duration: 110ms;
 }
 
 /* ========================================================================== */
@@ -182,22 +381,30 @@
 /* ========================================================================== */
 
 /*
- * globals.css kürzt bereits alle Dauern auf fast null. Hier fällt zusätzlich
- * die Ortsveränderung weg — Deckkraft und Farbe bleiben, sie erklären etwas.
+ * Pflicht, nicht Kür: Wer im Betriebssystem „weniger Bewegung" eingestellt
+ * hat, bekommt eine Wolke, die STILLSTEHT. Kein Schweben, kein Einlaufen,
+ * keine Schublade — die Wörter sind einfach da. Farbe und Deckkraft bleiben,
+ * sie erklären etwas.
  */
 @media (prefers-reduced-motion: reduce) {
-  .mc-word:hover,
-  .mc-word:active,
-  .mc-toggle:active .mc-chevron {
+  .mcf-root,
+  .mcf-root[data-state="closing"],
+  .mcf-word,
+  .mcf-float,
+  .mcf-panel {
+    animation: none;
+  }
+
+  .mcf-word:hover .mcf-pill,
+  .mcf-word:active .mcf-pill,
+  .mcf-x:active,
+  .mc-toggle:hover .mc-grow,
+  .mc-toggle:active .mc-grow {
     transform: none;
   }
 
-  .mc-root[data-state="open"] .mc-toggle:active .mc-chevron,
-  .mc-root[data-state="open"] .mc-chevron {
-    transform: rotate(180deg);
-  }
-
-  .mc-scroll {
-    transform: none;
+  /* Die Ansicht rückt weiterhin zurecht — aber ohne Fahrt. */
+  .mcf-world[data-glide="true"] {
+    transition: none;
   }
 }

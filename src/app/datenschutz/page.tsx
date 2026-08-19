@@ -4,17 +4,12 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Datenschutz",
   description:
-    "Datenschutzerklärung des Zeitstrahls „Gedächtnis der Zeit“ des Gymnasiums Neu Wulmstorf.",
+    "Datenschutzerklärung des Zeitstrahls „Gedächtnis der Zeit“ des Gymnasiums Neu Wulmstorf: verarbeitete Daten, Rechtsgrundlagen und Ihre Rechte.",
 };
 
-/** Auffälliger Marker für alles, was die Schule noch prüfen/eintragen muss. */
-function Marker({ text = "[BITTE PRÜFEN]" }: { text?: string }) {
-  return (
-    <mark className="mx-0.5 inline-block rounded-md bg-fox px-1.5 py-0.5 align-baseline text-[11px] font-bold tracking-wide text-navy">
-      {text}
-    </mark>
-  );
-}
+/** Einheitliches Aussehen aller Verweise im Rechtstext. */
+const linkClass =
+  "text-petrol underline decoration-petrol/30 underline-offset-2 transition-colors duration-150 hover:decoration-petrol";
 
 /** Abschnitt mit klarer Hierarchie und ruhiger Zeilenführung. */
 function Section({
@@ -34,9 +29,12 @@ function Section({
   );
 }
 
-const linkClass =
-  "text-petrol underline decoration-petrol/30 underline-offset-2 transition-colors duration-150 hover:decoration-petrol";
+/** Aufzählung im Fließtext — gleiche Zeilenführung wie die Absätze. */
+function List({ children }: { children: React.ReactNode }) {
+  return <ul className="list-disc space-y-1.5 pl-5">{children}</ul>;
+}
 
+/** Externe Ziele sowie mailto:/tel: — interne Seiten laufen über next/link. */
 function A({
   href,
   children,
@@ -66,37 +64,15 @@ export default function DatenschutzPage() {
           Datenschutzerklärung
         </h1>
 
-        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-fox/35 bg-fox-soft p-4">
-          <svg
-            aria-hidden
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.7}
-            strokeLinecap="round"
-            className="mt-px h-5 w-5 shrink-0 text-fox-deep"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 11.2v5" />
-            <path d="M12 7.9h.01" />
-          </svg>
-          <p className="text-sm leading-relaxed text-coal">
-            <strong className="font-bold">Entwurf</strong> — vor
-            Veröffentlichung von der Schule prüfen und vervollständigen. Alle
-            orange markierten Stellen brauchen noch eine Angabe.
-          </p>
-        </div>
-
         <p className="mt-6 max-w-prose text-sm leading-relaxed text-coal-soft">
-          Diese Website („Gedächtnis der Zeit“ – der Zeitstrahl des Gymnasiums
-          Neu Wulmstorf) ist bewusst datensparsam gebaut: Es gibt keine
+          Diese Website wurde bewusst datensparsam konzipiert: Es gibt keine
           Registrierung für Besucherinnen und Besucher, keine Werbung, keine
-          Tracking-Cookies und keine Analyse-Werkzeuge. Nachfolgend erläutern
-          wir, welche Daten dennoch anfallen und warum.
+          Tracking-Cookies und keine Analyse-Werkzeuge. Im Folgenden informieren
+          wir Sie darüber, welche personenbezogenen Daten dennoch verarbeitet
+          werden.
         </p>
 
         <Section title="1. Verantwortlicher">
-          <p>Verantwortlich für die Datenverarbeitung auf dieser Website ist:</p>
           <p>
             Gymnasium Neu Wulmstorf
             <br />
@@ -108,195 +84,284 @@ export default function DatenschutzPage() {
             <br />
             E-Mail:{" "}
             <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A>
-          </p>
-          <p>
-            Weitere Angaben finden Sie im{" "}
+            <br />
+            vertreten durch die Schulleitung (siehe{" "}
             <Link href="/impressum/" className={linkClass}>
               Impressum
             </Link>
-            .
+            )
           </p>
         </Section>
 
         <Section title="2. Datenschutzbeauftragte(r)">
           <p>
-            Als Schule in der Trägerschaft des Landkreises Harburg wird die
-            Schule von der/dem behördlichen Datenschutzbeauftragten des
-            Schulträgers bzw. der Landesschulbehörde betreut. Kontaktdaten:{" "}
-            <Marker /> (Name, Anschrift und E-Mail-Adresse der/des zuständigen
-            Datenschutzbeauftragten ergänzen)
+            Haben Sie Fragen zum Datenschutz? Dann richten Sie diese an{" "}
+            <A href="mailto:datenschutzfragen@gym-nw.de">
+              datenschutzfragen@gym-nw.de
+            </A>
+            . Ihre Anfrage wird an den behördlichen Datenschutzbeauftragten
+            weitergeleitet.
+          </p>
+          <p>Ansprechpartner: Herr Schröder-Schroedter</p>
+        </Section>
+
+        <Section title="3. Rechtsgrundlagen">
+          <p>
+            Als öffentliche Schule verarbeiten wir personenbezogene Daten zur
+            Erfüllung unserer öffentlichen Aufgabe (Dokumentation der
+            Schulgeschichte) auf Grundlage von{" "}
+            <strong className="font-semibold text-coal">
+              Art. 6 Abs. 1 lit. e DSGVO i. V. m. § 3 NDSG
+            </strong>{" "}
+            (Niedersächsisches Datenschutzgesetz). Für die Veröffentlichung von
+            Namen, Fotos, Audioaufnahmen und persönlichen Erinnerungen holen wir
+            zusätzlich eine{" "}
+            <strong className="font-semibold text-coal">
+              ausdrückliche Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO
+            </strong>{" "}
+            ein, die jederzeit mit Wirkung für die Zukunft widerrufen werden
+            kann.
+          </p>
+          <p className="italic">
+            (Hinweis: Öffentliche Stellen können sich anders als private
+            Anbieter nicht auf ein „berechtigtes Interesse“ nach Art. 6 Abs. 1
+            lit. f DSGVO berufen — daher die Kombination aus öffentlicher
+            Aufgabe und Einwilligung.)
           </p>
         </Section>
 
-        <Section title="3. Hosting (Cloudflare Pages)">
+        <Section title="4. Hosting (Cloudflare)">
           <p>
-            Diese Website wird als statische Seite bei Cloudflare Pages gehostet
-            (Cloudflare, Inc., 101 Townsend St., San Francisco, CA 94107, USA).
-            Beim Aufruf der Seite werden automatisch technische Zugriffsdaten in
-            Server-Logdateien verarbeitet, insbesondere IP-Adresse, Datum und
-            Uhrzeit des Zugriffs, aufgerufene Adresse, übertragene Datenmenge
-            sowie Browsertyp und Betriebssystem. Diese Daten sind technisch
-            erforderlich, um die Seite auszuliefern und den Betrieb sicher und
-            stabil zu halten (Abwehr von Angriffen). Rechtsgrundlage ist Art. 6
-            Abs. 1 lit. e DSGVO in Verbindung mit dem öffentlichen
-            Bildungsauftrag der Schule bzw. Art. 6 Abs. 1 lit. f DSGVO
-            (berechtigtes Interesse an einem sicheren Betrieb). <Marker />
+            Diese Website wird über{" "}
+            <strong className="font-semibold text-coal">Cloudflare</strong>{" "}
+            (Cloudflare, Inc., USA, bzw. Cloudflare International B.V.,
+            Niederlande) bereitgestellt. Beim Aufruf der Website verarbeitet
+            Cloudflare automatisch technische Zugriffsdaten (z. B. IP-Adresse,
+            Datum und Uhrzeit des Zugriffs, aufgerufene Seite, verwendeter
+            Browser), um die Website performant und sicher auszuliefern.
+            Rechtsgrundlage ist Art. 6 Abs. 1 lit. e DSGVO i. V. m. § 3 NDSG
+            (Betrieb einer sicheren und funktionsfähigen Website als öffentliche
+            Aufgabe).
           </p>
           <p>
-            Dabei kann es zu einer Übermittlung von Daten in die USA kommen. Die
-            Übermittlung stützt sich auf den EU-US Data Privacy Framework bzw.
-            auf die von der EU-Kommission erlassenen Standardvertragsklauseln,
-            die Cloudflare mit seinen Kundinnen und Kunden abschließt. Mit
-            Cloudflare besteht ein Vertrag zur Auftragsverarbeitung. <Marker />
+            Da Cloudflare-Server auch außerhalb der EU (insbesondere in den USA)
+            stehen können, findet eine Datenübermittlung in ein Drittland statt.
+            Cloudflare ist unter dem{" "}
+            <strong className="font-semibold text-coal">
+              EU-U.S. Data Privacy Framework (DPF)
+            </strong>{" "}
+            zertifiziert und setzt ergänzend EU-Standardvertragsklauseln (SCC)
+            ein — die Übermittlung ist damit auf Basis eines
+            Angemessenheitsbeschlusses der EU-Kommission bzw. geeigneter
+            Garantien nach Art. 44 ff. DSGVO zulässig. Mit der Nutzung von
+            Cloudflare gilt das von Cloudflare bereitgestellte
+            Standard-Auftragsverarbeitungsaddendum (Cloudflare Customer DPA)
+            nach Art. 28 DSGVO.
           </p>
         </Section>
 
-        <Section title="4. Backend und Datenbank (Supabase)">
+        <Section title="5. Datenbank/Backend (Supabase)">
           <p>
-            Die Inhalte des Zeitstrahls werden in einer Datenbank des Anbieters
-            Supabase gespeichert. Das Projekt ist in der Region Frankfurt am
-            Main (AWS eu-central-1) angelegt, die Daten liegen also innerhalb
-            der Europäischen Union. Gespeichert werden dort:
+            Die Inhalte des Zeitstrahls sowie die Zugangsdaten der berechtigten
+            Schul-Accounts werden über{" "}
+            <strong className="font-semibold text-coal">Supabase</strong>{" "}
+            verarbeitet und gespeichert, mit Serverstandort{" "}
+            <strong className="font-semibold text-coal">
+              Frankfurt am Main (EU-Central-1)
+            </strong>
+            . Eine Datenübermittlung in Drittländer außerhalb der EU/des EWR
+            findet dadurch grundsätzlich nicht statt. Gespeichert werden
+            insbesondere:
           </p>
-          <ul className="list-disc space-y-1.5 pl-5">
+          <List>
             <li>
-              die Inhalte des Zeitstrahls (Titel, Beschreibungstexte, Kategorie,
-              Klasse, Datum, optional angegebene Namen sowie hochgeladene Bilder
-              und Audio-Aufnahmen),
+              je Zeitstrahl-Eintrag: Vorname, Klasse, Erinnerungstext, Kategorie
+              und Datum, sowie bei manchen Einträgen ein vom Projektteam
+              ergänztes Foto,
             </li>
             <li>
-              die Zugangsdaten der wenigen Schul-Accounts, die Einträge anlegen
-              dürfen (E-Mail-Adresse und ein verschlüsselt gespeichertes
-              Passwort), sowie Zeitpunkte der Anmeldung.
+              Zugangsdaten der Schul-Accounts (Benutzername/E-Mail, Passwort
+              ausschließlich verschlüsselt/gehasht gespeichert).
             </li>
-          </ul>
+          </List>
           <p>
-            Rechtsgrundlage für die Speicherung der Inhalte ist Art. 6 Abs. 1
-            lit. e DSGVO (Wahrnehmung einer Aufgabe im öffentlichen Interesse –
-            Dokumentation der Schulgeschichte) sowie, soweit Personen abgebildet
-            oder namentlich genannt werden, deren Einwilligung nach Art. 6
-            Abs. 1 lit. a DSGVO. Mit Supabase besteht ein Vertrag zur
-            Auftragsverarbeitung. <Marker />
+            Rechtsgrundlage: Art. 6 Abs. 1 lit. e DSGVO i. V. m. § 3 NDSG für
+            den Betrieb der Website; Art. 6 Abs. 1 lit. a DSGVO für die von
+            Nutzenden freiwillig eingereichten Erinnerungsinhalte. Mit der
+            Nutzung von Supabase gilt das von Supabase bereitgestellte
+            Standard-Auftragsverarbeitungsaddendum (Supabase DPA,
+            supabase.com/legal/dpa) nach Art. 28 DSGVO.
           </p>
         </Section>
 
-        <Section title="5. Cookies, localStorage und Reichweitenmessung">
+        <Section title="6. Login-Bereich für Schul-Accounts">
           <p>
-            Diese Website setzt <strong>keine Tracking-Cookies</strong> und
-            verwendet{" "}
-            <strong>keine Analyse- oder Statistik-Werkzeuge</strong> (kein
-            Google Analytics o. Ä.). Es findet keine Profilbildung und keine
-            automatisierte Entscheidungsfindung statt. Ein Cookie-Banner ist
-            daher nicht erforderlich.
-          </p>
-          <p>
-            Ausschließlich für die Anmeldung der wenigen Schul-Accounts wird der
-            technisch notwendige Speicher des Browsers („localStorage“) genutzt,
-            um die Sitzung nach dem Login aufrechtzuerhalten. Diese Information
-            verbleibt auf dem Gerät der angemeldeten Person und kann durch
-            Abmelden oder Löschen der Browserdaten entfernt werden. Wer die
-            Seite nur liest, hat keinen solchen Eintrag.
+            Nur wenige berechtigte Schul-Accounts können sich anmelden und
+            Einträge bearbeiten. Für die Anmeldung wird das Anmeldesystem von
+            Supabase (Supabase Auth) genutzt, das den Sitzungsstatus
+            standardmäßig als Token im lokalen Speicher (localStorage) des
+            Browsers ablegt; je nach technischer Umsetzung kann stattdessen auch
+            ein Session-Cookie zum Einsatz kommen. In beiden Fällen dient der
+            Mechanismus ausschließlich der Erkennung des angemeldeten Zustands
+            und <strong className="font-semibold text-coal">nicht</strong> der
+            Analyse oder Nachverfolgung von Besucherinnen und Besuchern.
+            Rechtsgrundlage: § 25 Abs. 2 Nr. 2 TDDDG (technisch notwendig) i. V.
+            m. Art. 6 Abs. 1 lit. e DSGVO.
           </p>
         </Section>
 
-        <Section title="6. Öffentliche Inhalte: Erinnerungen, Fotos und Audio-Interviews">
+        <Section title="7. Eingereichte Inhalte (Vorname, Klasse, Erinnerung)">
           <p>
-            Alle auf dem Zeitstrahl eingetragenen Erinnerungen sind{" "}
-            <strong>öffentlich sichtbar</strong> – also für jede Besucherin und
-            jeden Besucher der Website weltweit abrufbar. Das betrifft Titel und
-            Beschreibungstexte, optional angegebene Namen (z. B. „Anna, 8a“ oder
-            „Abi 1996“), hochgeladene Fotos und Audio-Interviews.
+            Über das Eingabeformular können Schul-Accounts ausschließlich Text
+            einreichen: Vorname, Klasse und einen Erinnerungstext. Ein
+            Foto-Upload ist über das Formular nicht möglich. Vor dem Absenden
+            bestätigt die einreichende Person per Checkbox „Ich stimme zu“, dass
+            sie mit der Speicherung und der weltweiten öffentlichen Anzeige
+            dieser Angaben einverstanden ist und die Nutzungsbedingungen
+            akzeptiert (Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO). Für
+            Vorname, Klasse und Erinnerungstext reicht diese
+            eigene Bestätigung aus; eine gesonderte Einwilligung der
+            Erziehungsberechtigten ist dafür nicht erforderlich.
           </p>
           <p>
-            Einträge können nicht von beliebigen Personen erstellt werden: Es
-            gibt keine öffentliche Registrierung. Beiträge werden ausschließlich
-            über wenige von der Schule eingerichtete Accounts angelegt und von
-            der Schule betreut.
+            Werden dem Zeitstrahl Fotos hinzugefügt, geschieht dies durch das
+            Projektteam außerhalb des öffentlichen Formulars. Die verwendeten
+            Fotos stammen aus bereits öffentlich zugänglichen Quellen (z. B. der
+            Schul-Homepage gym-nw.de) und werden auf Grundlage von Art. 6 Abs. 1
+            lit. e DSGVO i. V. m. § 3 NDSG übernommen. Wer mit der Verwendung
+            eines Fotos nicht einverstanden ist, kann jederzeit Widerspruch
+            einlegen (siehe Ziffer 12); das Foto wird dann entfernt.
           </p>
           <p>
-            Fotos und Audio-Aufnahmen werden nur mit ausdrücklicher Einwilligung
-            der abgebildeten bzw. hörbaren Personen veröffentlicht; bei
-            minderjährigen Schülerinnen und Schülern ist zusätzlich die
-            Einwilligung der Erziehungsberechtigten erforderlich. Die
-            Einwilligung ist freiwillig und kann jederzeit mit Wirkung für die
-            Zukunft widerrufen werden (Art. 7 Abs. 3 DSGVO) – wir entfernen den
-            betreffenden Inhalt dann zeitnah.{" "}
-            <Marker text="[BITTE PROZESS PRÜFEN]" /> (Wie und wo werden die
-            Einwilligungen eingeholt und dokumentiert?)
-          </p>
-        </Section>
-
-        <Section title="7. Schriftarten">
-          <p>
-            Die verwendete Schriftart („Open Sans“) wird zusammen mit der
-            Website von unserem eigenen Server ausgeliefert. Es werden{" "}
-            <strong>keine Anfragen an Google Fonts</strong> oder andere externe
-            Anbieter gestellt; Ihre IP-Adresse wird dabei also nicht an Dritte
-            übertragen.
+            Alle veröffentlichten Einträge sind{" "}
+            <strong className="font-semibold text-coal">
+              für jede Besucherin und jeden Besucher weltweit öffentlich
+              einsehbar
+            </strong>
+            . Die Einwilligung kann jederzeit formlos gegenüber{" "}
+            <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A>{" "}
+            widerrufen werden; der betreffende Inhalt wird danach zeitnah
+            entfernt.
           </p>
         </Section>
 
-        <Section title="8. Speicherdauer">
+        <Section title="8. Cookies und Tracking">
           <p>
-            Die Inhalte des Zeitstrahls sind auf Dauer angelegt, da sie die
-            Geschichte der Schule dokumentieren. Sie werden gelöscht, wenn eine
-            betroffene Person dies verlangt oder eine erteilte Einwilligung
-            widerrufen wird. Technische Zugriffsdaten in den Server-Logs des
-            Hosters werden nach kurzer Zeit automatisch gelöscht bzw.
-            anonymisiert. <Marker />
+            Diese Website setzt{" "}
+            <strong className="font-semibold text-coal">
+              keine Tracking- oder Marketing-Cookies
+            </strong>{" "}
+            und verwendet{" "}
+            <strong className="font-semibold text-coal">
+              keine Analyse- oder Statistik-Werkzeuge
+            </strong>{" "}
+            (z. B. Google Analytics, Matomo). Es werden ausschließlich technisch
+            notwendige Cookies/Speichermechanismen für den Login-Bereich
+            verwendet (siehe Ziffer 6).
           </p>
         </Section>
 
-        <Section title="9. Ihre Rechte">
+        <Section title="9. Eingebundene Schriftarten">
           <p>
-            Sie haben das Recht auf Auskunft über die zu Ihrer Person
-            gespeicherten Daten (Art. 15 DSGVO), auf Berichtigung unrichtiger
-            Daten (Art. 16 DSGVO), auf Löschung (Art. 17 DSGVO), auf
-            Einschränkung der Verarbeitung (Art. 18 DSGVO), auf
-            Datenübertragbarkeit (Art. 20 DSGVO) sowie das Recht, einer
-            Verarbeitung zu widersprechen (Art. 21 DSGVO). Eine erteilte
-            Einwilligung können Sie jederzeit für die Zukunft widerrufen.
-          </p>
-          <p>
-            <strong>Löschwünsche und Fragen</strong> richten Sie bitte formlos
-            an <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A>.
-            Nennen Sie dabei möglichst den Titel des betreffenden Eintrags,
-            damit wir ihn schnell finden.
+            Die Schriftart „Open Sans“ wird lokal vom eigenen Server
+            ausgeliefert. Es findet{" "}
+            <strong className="font-semibold text-coal">keine</strong>{" "}
+            Verbindung zu externen Font-Anbietern (z. B. Google Fonts) statt; es
+            werden dabei keine Daten an Dritte übermittelt.
           </p>
         </Section>
 
-        <Section title="10. Beschwerderecht bei der Aufsichtsbehörde">
+        <Section title="10. Speicherdauer">
           <p>
-            Unabhängig davon haben Sie das Recht, sich bei einer
-            Datenschutz-Aufsichtsbehörde zu beschweren (Art. 77 DSGVO).
-            Zuständig ist:
+            Die Inhalte des Zeitstrahls sind als dauerhaftes digitales Gedächtnis
+            der Schule angelegt und werden grundsätzlich unbefristet vorgehalten,
+            solange der Zweck (Dokumentation der Schulgeschichte) fortbesteht und
+            keine Einwilligung widerrufen wurde. Technische Zugriffsdaten, die im
+            Rahmen der Auslieferung über Cloudflare anfallen, werden nur
+            kurzzeitig zur Sicherstellung von Betrieb und Sicherheit vorgehalten
+            und nicht dauerhaft gespeichert. Nach Widerruf einer Einwilligung
+            werden die betroffenen Inhalte unverzüglich, spätestens innerhalb von
+            14 Tagen gelöscht.
+          </p>
+        </Section>
+
+        <Section title="11. Ihre Rechte als betroffene Person">
+          <p>
+            Sie haben nach Maßgabe der gesetzlichen Bestimmungen das Recht auf:
+          </p>
+          <List>
+            <li>Auskunft über Ihre gespeicherten Daten (Art. 15 DSGVO),</li>
+            <li>Berichtigung unrichtiger Daten (Art. 16 DSGVO),</li>
+            <li>Löschung Ihrer Daten (Art. 17 DSGVO),</li>
+            <li>Einschränkung der Verarbeitung (Art. 18 DSGVO),</li>
+            <li>Datenübertragbarkeit (Art. 20 DSGVO),</li>
+            <li>Widerspruch gegen die Verarbeitung (Art. 21 DSGVO),</li>
+            <li>
+              Widerruf einer erteilten Einwilligung mit Wirkung für die Zukunft
+              (Art. 7 Abs. 3 DSGVO).
+            </li>
+          </List>
+          <p>
+            Wenden Sie sich dazu formlos an{" "}
+            <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A>{" "}
+            oder{" "}
+            <A href="mailto:datenschutzfragen@gym-nw.de">
+              datenschutzfragen@gym-nw.de
+            </A>
+            .
+          </p>
+        </Section>
+
+        <Section title="12. Widerspruchsrecht">
+          <p>
+            Soweit Daten auf Grundlage einer öffentlichen Aufgabe (Art. 6 Abs. 1
+            lit. e DSGVO) verarbeitet werden, können Sie aus Gründen, die sich
+            aus Ihrer besonderen Situation ergeben, gemäß Art. 21 DSGVO
+            Widerspruch einlegen. Genügt hierfür eine E-Mail an{" "}
+            <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A>.
+          </p>
+        </Section>
+
+        <Section title="13. Beschwerderecht bei einer Aufsichtsbehörde">
+          <p>
+            Sie haben unbeschadet anderweitiger Rechtsbehelfe das Recht auf
+            Beschwerde bei einer Datenschutz-Aufsichtsbehörde, insbesondere:
           </p>
           <p>
             Die Landesbeauftragte für den Datenschutz Niedersachsen
             <br />
-            Prinzenstraße 5, 30159 Hannover
+            Prinzenstraße 5
             <br />
-            <A href="https://www.lfd.niedersachsen.de" rel="noopener noreferrer">
-              www.lfd.niedersachsen.de
+            30159 Hannover
+            <br />
+            Telefon: 0511 120 45 00
+            <br />
+            E-Mail:{" "}
+            <A href="mailto:poststelle@lfd.niedersachsen.de">
+              poststelle@lfd.niedersachsen.de
             </A>
-            <br />
-            <Marker /> (Anschrift und Zuständigkeit vor Veröffentlichung
-            bestätigen)
           </p>
         </Section>
 
-        <Section title="11. Datensicherheit">
+        <Section title="14. Datensicherheit">
           <p>
-            Die Website wird ausschließlich verschlüsselt über HTTPS
-            ausgeliefert. Schreibende Zugriffe auf die Datenbank sind
-            serverseitig auf die berechtigten Schul-Accounts beschränkt (Row
-            Level Security); ohne gültige Anmeldung kann niemand Inhalte
-            anlegen, ändern oder löschen.
+            Die Übertragung erfolgt verschlüsselt über HTTPS/TLS. Der Zugriff auf
+            die Datenbank ist über Row-Level-Security (RLS) so eingeschränkt,
+            dass Schreibzugriffe ausschließlich über authentifizierte
+            Schul-Accounts möglich sind. Passwörter werden ausschließlich in
+            gehashter Form gespeichert.
           </p>
         </Section>
 
-        <p className="mt-8 max-w-prose border-t border-paper-line pt-7 text-sm leading-relaxed text-coal-soft">
-          Stand dieser Datenschutzerklärung: <Marker text="[BITTE EINTRAGEN]" />
+        <Section title="15. Änderungen dieser Datenschutzerklärung">
+          <p>
+            Wir passen diese Datenschutzerklärung an, sobald sich die Website,
+            die eingesetzten Dienste oder die rechtlichen Vorgaben ändern.
+          </p>
+        </Section>
+
+        <p className="mt-8 max-w-prose border-t border-paper-line pt-7 text-sm text-coal-soft">
+          Stand: August 2026
         </p>
       </div>
     </div>

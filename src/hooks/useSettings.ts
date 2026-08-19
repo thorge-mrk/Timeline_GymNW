@@ -10,14 +10,21 @@ import { useCallback, useEffect, useState } from "react";
  * übernimmt weitere Tabs desselben Geräts.
  */
 export interface Settings {
-  /** Neue Einträge live empfangen (Standard: an). */
+  /**
+   * Neue Einträge live empfangen — Standard: AUS.
+   *
+   * Ein Zeitstrahl, der sich von selbst bewegt, ist auf dem Beamer in der Aula
+   * ein Fest und am Handy in der Pause eine Störung. Deshalb muss man ihn
+   * ausdrücklich einschalten: Wer den Effekt haben will, weiß, dass er ihn
+   * will. Alle anderen bekommen eine Seite, die stillhält.
+   */
   realtime: boolean;
   /** Vollbild: Fußzeile aus, Zeitstrahl bekommt die volle Höhe. */
   fullscreen: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  realtime: true,
+  realtime: false,
   fullscreen: false,
 };
 
