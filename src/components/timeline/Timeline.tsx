@@ -1069,11 +1069,6 @@ export default function Timeline({
           </div>
         )}
 
-        {/* Bedienhinweis — bleibt unten links unter der Meldungsecke */}
-        <p className="pointer-events-none absolute bottom-4 left-5 z-10 hidden text-[11px] text-coal-faint sm:block">
-          Ziehen zum Verschieben · Scrollen oder Kneifen zum Zoomen
-        </p>
-
         {/* Schwebende Bedienleiste — ein Stück, klare Trennlinien */}
         <div
           data-no-zoom
