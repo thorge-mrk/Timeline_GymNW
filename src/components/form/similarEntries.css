@@ -94,25 +94,17 @@
 
 /* ------------------------------------------------------------------ *
  * „Nein, meins ist etwas anderes“
- * Muss leicht zu finden und leicht zu treffen sein (44 px Fingermaß),
- * darf aber nicht wie ein zweiter Hauptknopf aussehen.
+ * Der zweite von zwei Wegen — also auch ein richtiger Knopf und kein
+ * Kleingedrucktes. Ruhiger als „dazuschreiben“ bleibt er trotzdem: Die
+ * Fuchsfarbe trägt nur der eine, hier zählt die Fläche.
  * ------------------------------------------------------------------ */
-.similar-dismiss {
-  display: inline-flex;
-  align-items: center;
-  min-height: 2.75rem;
-  padding-inline: 0.25rem;
-  border-radius: 0.5rem;
+.similar-deny {
+  background-color: var(--color-paper-card);
   color: var(--color-coal-soft);
-  cursor: pointer;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--color-coal-soft) 35%, transparent);
-  text-underline-offset: 3px;
-  transition: color 150ms var(--ease-out-strong);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .similar-dismiss:hover {
+  .similar-deny:hover:not(:disabled) {
     color: var(--color-coal);
   }
 }

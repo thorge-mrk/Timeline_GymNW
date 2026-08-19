@@ -8,6 +8,7 @@ import { formatEntryDate } from "@/lib/dates";
 import { richTextToPlain } from "@/lib/richText";
 import { supabase } from "@/lib/supabase";
 import type { Entry, VoiceInsert } from "@/lib/types";
+import { ConsentCheck } from "./ConsentCheck";
 import { SuccessCard } from "./SuccessCard";
 
 /**
@@ -22,6 +23,18 @@ import { SuccessCard } from "./SuccessCard";
  * Bewusst ohne Formatier-Werkzeuge: Wer hier landet, will einen Absatz
  * schreiben, kein Dokument setzen. Drei Felder, ein Knopf, fertig.
  *
+ * ALLE drei Felder sind freiwillig — so will es die Schule. Das geht aber nur
+ * bis zu einer Grenze: Eine Stimme, die weder Text noch Namen trägt, sagt gar
+ * nichts. Sie wäre ein stummer Eintrag in der Liste, den niemand zuordnen
+ * kann. Deshalb ist die Regel hier: mindestens EINES von beidem — entweder du
+ * erzählst etwas, oder du stellst wenigstens deinen Namen dazu („ich war auch
+ * dabei“). Beides zusammen ist natürlich am schönsten.
+ *
+ * Die Datenbankspalte `body` ist NOT NULL und braucht mindestens ein Zeichen.
+ * Wer nur den Namen dalässt, bekommt deshalb den Standardsatz aus
+ * `FALLBACK_BODY` — das ist genau das, was der Klick bedeutet, und es liest
+ * sich unter dem Eintrag wie ein Satz und nicht wie ein Platzhalter.
+ *
  * Was hier NICHT geht: fremde Texte ändern oder löschen. Das lässt die
  * Datenbank gar nicht erst zu (Policies entry_voices_update_admin /
  * entry_voices_delete_admin) — und es wäre auch falsch. Eine fremde Erinnerung
@@ -31,6 +44,12 @@ import { SuccessCard } from "./SuccessCard";
 const BODY_MAX = 2000;
 const AUTHOR_MAX = 80;
 const CLASS_MAX = 30;
+
+/**
+ * Der Satz, der gespeichert wird, wenn jemand nur seinen Namen dalässt.
+ * Er behauptet nichts, was nicht stimmt — genau das sagt dieser Klick aus.
+ */
+const FALLBACK_BODY = "Ich war auch dabei.";
 
 const NETWORK_MESSAGE =
   "Keine Verbindung zum Server — bitte die Internetverbindung prüfen und noch einmal versuchen.";
@@ -124,11 +143,15 @@ export function VoiceForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
+  const [consent, setConsent] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const category = categoryById(entry.category);
   const dateText = formatEntryDate(entry);
-  const bodyMissing = triedSubmit && body.trim().length === 0;
+  /* Leer ist erlaubt — leer UND ohne Namen nicht. Die Meldung hängt deshalb
+     an beiden Feldern zusammen, nicht am Textfeld allein. */
+  const nothingSaid =
+    triedSubmit && body.trim().length === 0 && authorName.trim().length === 0;
 
   /** Ein Vorgeschmack auf das, was schon dasteht — damit man weiß, wo man ist. */
   const existing = richTextToPlain(entry.description).slice(0, 180);
@@ -138,6 +161,9 @@ export function VoiceForm({
     setTriedSubmit(false);
     setError(null);
     setSaved(false);
+    // Die Einwilligung wird bewusst neu abgefragt: Sie gehört zu diesem einen
+    // Beitrag, nicht zur Sitzung.
+    setConsent(false);
     window.setTimeout(() => bodyRef.current?.focus(), 60);
   }
 
@@ -149,8 +175,11 @@ export function VoiceForm({
     setError(null);
 
     const clean = body.trim();
-    if (!clean) {
-      setError("Bitte schreib ein paar Worte — sonst gibt es nichts zu ergänzen.");
+    const cleanAuthor = authorName.trim();
+    if (!clean && !cleanAuthor) {
+      setError(
+        "Schreib ein paar Worte — oder trag wenigstens deinen Namen ein. Sonst weiß niemand, wessen Erinnerung das ist."
+      );
       bodyRef.current?.focus();
       return;
     }
@@ -160,6 +189,13 @@ export function VoiceForm({
       );
       return;
     }
+    if (!consent) {
+      setError(
+        "Bitte stimm noch den Nutzungsbedingungen und der Datenschutzerklärung zu."
+      );
+      document.getElementById("voice-consent")?.focus();
+      return;
+    }
 
     setSaving(true);
     try {
@@ -167,8 +203,10 @@ export function VoiceForm({
       // das, sonst weist die Datenbank die Zeile ab.
       const payload: VoiceInsert = {
         entry_id: entry.id,
-        body: clean,
-        author_name: authorName.trim() || null,
+        // `body` ist in der Datenbank NOT NULL: Wer nur den Namen dalässt,
+        // hinterlässt trotzdem einen lesbaren Satz.
+        body: clean || FALLBACK_BODY,
+        author_name: cleanAuthor || null,
         class_name: normalizeClass(className.trim()) || null,
         created_by: session.user.id,
       };
@@ -274,11 +312,7 @@ export function VoiceForm({
       <div>
         <div className="flex items-baseline justify-between gap-3">
           <label className="label" htmlFor="voice-body">
-            Deine Erinnerung{" "}
-            <span aria-hidden className="font-bold text-fox-deep">
-              *
-            </span>
-            <span className="sr-only">(Pflichtfeld)</span>
+            Deine Erinnerung
           </label>
           <span aria-hidden className="hint tabular-nums">
             noch {BODY_MAX - body.length}
@@ -293,17 +327,21 @@ export function VoiceForm({
           maxLength={BODY_MAX}
           value={body}
           disabled={saving}
-          aria-required="true"
-          aria-invalid={bodyMissing}
+          aria-invalid={nothingSaid}
           onChange={(e) => setBody(e.target.value)}
         />
         <div className="mt-1.5 min-h-4.5">
-          {bodyMissing && (
+          {nothingSaid ? (
             <p
               role="alert"
               className="note-enter text-xs font-semibold text-ink-bad"
             >
-              Bitte schreib ein paar Worte.
+              Bitte schreib ein paar Worte — oder trag unten deinen Namen ein.
+            </p>
+          ) : (
+            <p className="hint">
+              Freiwillig — ein einziger Satz genügt. Wenn du nichts schreiben
+              magst, reicht auch dein Name weiter unten.
             </p>
           )}
         </div>
@@ -323,6 +361,7 @@ export function VoiceForm({
             autoComplete="name"
             value={authorName}
             disabled={saving}
+            aria-invalid={nothingSaid}
             onChange={(e) => setAuthorName(e.target.value)}
           />
           <p className="hint mt-1.5">Optional — der Name steht an deiner Stimme.</p>
@@ -346,24 +385,38 @@ export function VoiceForm({
         </div>
       </div>
 
-      <div className="border-t border-paper-line pt-6">
-        <button
-          type="submit"
-          className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
+      <div className="space-y-5 border-t border-paper-line pt-6">
+        <ConsentCheck
+          id="voice-consent"
+          checked={consent}
+          onChange={setConsent}
           disabled={saving}
-        >
-          {saving && (
-            <span
-              aria-hidden
-              className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
-            />
+          showError={triedSubmit}
+          note={`Deine Erinnerung steht danach öffentlich bei „${entry.title}“ — für alle Besucherinnen und Besucher der Website sichtbar.`}
+        />
+
+        <div>
+          <button
+            type="submit"
+            className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
+            disabled={saving || !consent}
+            aria-describedby={!consent ? "voice-submit-grund" : undefined}
+          >
+            {saving && (
+              <span
+                aria-hidden
+                className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
+              />
+            )}
+            {saving ? "Wird gespeichert …" : "Erinnerung hinzufügen"}
+          </button>
+          {/* Ein grauer Knopf ohne Grund ist eine Sackgasse — der Grund steht dabei. */}
+          {!consent && (
+            <p id="voice-submit-grund" className="hint mt-2.5 leading-relaxed">
+              Der Knopf wird aktiv, sobald du oben zugestimmt hast.
+            </p>
           )}
-          {saving ? "Wird gespeichert …" : "Erinnerung hinzufügen"}
-        </button>
-        <p className="hint mt-3">
-          Mit <span className="font-bold text-fox-deep">*</span> markierte Felder
-          sind Pflichtfelder.
-        </p>
+        </div>
       </div>
     </form>
   );
