@@ -4,17 +4,12 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Impressum",
   description:
-    "Impressum des Zeitstrahls „Gedächtnis der Zeit“ des Gymnasiums Neu Wulmstorf.",
+    "Impressum des Zeitstrahls „Gedächtnis der Zeit“ des Gymnasiums Neu Wulmstorf: Angaben nach § 5 DDG, Kontakt, Schulträger und Aufsichtsbehörde.",
 };
 
-/** Auffälliger Marker für alles, was die Schule noch prüfen/eintragen muss. */
-function Marker({ text = "[BITTE PRÜFEN]" }: { text?: string }) {
-  return (
-    <mark className="mx-0.5 inline-block rounded-md bg-fox px-1.5 py-0.5 align-baseline text-[11px] font-bold tracking-wide text-navy">
-      {text}
-    </mark>
-  );
-}
+/** Einheitliches Aussehen aller Verweise im Rechtstext. */
+const linkClass =
+  "text-petrol underline decoration-petrol/30 underline-offset-2 transition-colors duration-150 hover:decoration-petrol";
 
 /** Abschnitt mit klarer Hierarchie und ruhiger Zeilenführung. */
 function Section({
@@ -34,17 +29,14 @@ function Section({
   );
 }
 
+/** Externe Ziele sowie mailto:/tel: — interne Seiten laufen über next/link. */
 function A({
   href,
   children,
   ...rest
 }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) {
   return (
-    <a
-      href={href}
-      className="text-petrol underline decoration-petrol/30 underline-offset-2 transition-colors duration-150 hover:decoration-petrol"
-      {...rest}
-    >
+    <a href={href} className={linkClass} {...rest}>
       {children}
     </a>
   );
@@ -67,28 +59,7 @@ export default function ImpressumPage() {
           Impressum
         </h1>
 
-        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-fox/35 bg-fox-soft p-4">
-          <svg
-            aria-hidden
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.7}
-            strokeLinecap="round"
-            className="mt-px h-5 w-5 shrink-0 text-fox-deep"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <path d="M12 11.2v5" />
-            <path d="M12 7.9h.01" />
-          </svg>
-          <p className="text-sm leading-relaxed text-coal">
-            <strong className="font-bold">Entwurf</strong> — vor
-            Veröffentlichung von der Schule prüfen und vervollständigen. Alle
-            orange markierten Stellen brauchen noch eine Angabe.
-          </p>
-        </div>
-
-        <Section title="Angaben gemäß § 5 DDG">
+        <Section title="Angaben gemäß § 5 DDG (Digitale-Dienste-Gesetz)">
           <p>
             Gymnasium Neu Wulmstorf
             <br />
@@ -113,52 +84,76 @@ export default function ImpressumPage() {
         </Section>
 
         <Section title="Vertreten durch">
-          <p>
-            Die Schulleitung: <Marker text="[BITTE VON DER SCHULE EINTRAGEN]" />
-          </p>
+          <p>Die Schulleitung: Jörg Berthold (Schulleiter)</p>
+        </Section>
+
+        <Section title="Technische Umsetzung">
+          <p>Umsetzung: Thorge Mrowinski (Thorge Tech Solutions)</p>
         </Section>
 
         <Section title="Schulträger">
           <p>
-            Landkreis Harburg <Marker />
+            Landkreis Harburg
+            <br />
+            Der Landrat
+            <br />
+            Schloßplatz 6
+            <br />
+            21423 Winsen (Luhe)
+            <br />
+            Telefon: 04171 693-0
+            <br />
+            E-Mail:{" "}
+            <A href="mailto:buergerservice@lkharburg.de">
+              buergerservice@lkharburg.de
+            </A>
           </p>
         </Section>
 
         <Section title="Zuständige Aufsichtsbehörde">
-          <p>
-            Regionales Landesamt für Schule und Bildung <Marker />
-          </p>
+          <p>Regionales Landesamt für Schule und Bildung (RLSB) Lüneburg</p>
         </Section>
 
         <Section title="Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV">
           <p>
-            <Marker text="[BITTE EINTRAGEN]" /> (Name und Anschrift der
-            verantwortlichen Person; in der Regel ein Mitglied der Schulleitung
-            oder die betreuende Lehrkraft des Projekts)
+            Jörg Berthold, Schulleiter
+            <br />
+            Gymnasium Neu Wulmstorf, Ernst-Moritz-Arndt-Straße 20, 21629 Neu
+            Wulmstorf
           </p>
         </Section>
 
         <Section title="Rechtsform">
           <p>
             Das Gymnasium Neu Wulmstorf ist eine öffentliche Schule in der
-            Trägerschaft des Landkreises Harburg und damit eine Einrichtung ohne
-            eigene Rechtspersönlichkeit. <Marker />
+            Trägerschaft des Landkreises Harburg. Öffentliche Schulen in
+            Niedersachsen besitzen keine eigene Rechtspersönlichkeit; sie sind
+            rechtlich unselbstständige Einrichtungen des Schulträgers bzw. des
+            Landes Niedersachsen.
           </p>
         </Section>
 
         <Section title="Haftung für Inhalte">
           <p>
-            Die Inhalte dieser Website – insbesondere die von Schülerinnen und
-            Schülern, Lehrkräften und Ehemaligen beigetragenen Erinnerungen –
+            Die Inhalte dieser Website — insbesondere die von Schülerinnen und
+            Schülern, Lehrkräften und Ehemaligen beigetragenen Erinnerungen —
             werden mit größter Sorgfalt erstellt. Für die Richtigkeit,
             Vollständigkeit und Aktualität der Inhalte können wir jedoch keine
             Gewähr übernehmen. Beiträge werden ausschließlich über wenige
             berechtigte Schul-Accounts eingetragen und von der Schule
-            redaktionell betreut. Sollten Ihnen Inhalte auffallen, die Rechte
-            Dritter verletzen oder unzutreffend sind, bitten wir um eine kurze
-            Nachricht an{" "}
-            <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A> –
-            wir entfernen oder korrigieren solche Inhalte umgehend.
+            redaktionell betreut (siehe auch unsere{" "}
+            <Link href="/nutzungsbedingungen/" className={linkClass}>
+              Nutzungsbedingungen
+            </Link>
+            ). Als Diensteanbieter sind wir gemäß § 7 Abs. 1 DDG für eigene
+            Inhalte nach den allgemeinen Gesetzen verantwortlich; zu einer
+            Überwachung übermittelter oder gespeicherter fremder Informationen
+            sind wir nach §§ 8–10 DDG nicht verpflichtet. Sollten Ihnen Inhalte
+            auffallen, die Rechte Dritter verletzen oder unzutreffend sind,
+            bitten wir um eine kurze Nachricht an{" "}
+            <A href="mailto:sekretariat@gym-nw.de">sekretariat@gym-nw.de</A> —
+            wir prüfen den Hinweis und entfernen oder korrigieren betroffene
+            Inhalte umgehend.
           </p>
         </Section>
 
@@ -167,20 +162,32 @@ export default function ImpressumPage() {
             Unser Angebot kann Links zu externen Websites Dritter enthalten, auf
             deren Inhalte wir keinen Einfluss haben. Für diese fremden Inhalte
             können wir keine Gewähr übernehmen; verantwortlich ist stets der
-            jeweilige Anbieter oder Betreiber der verlinkten Seiten. Bei bekannt
-            werdenden Rechtsverletzungen entfernen wir entsprechende Links
-            umgehend.
+            jeweilige Anbieter oder Betreiber der verlinkten Seiten. Die
+            verlinkten Seiten wurden zum Zeitpunkt der Verlinkung auf mögliche
+            Rechtsverstöße überprüft. Eine permanente inhaltliche Kontrolle ist
+            ohne konkrete Anhaltspunkte einer Rechtsverletzung nicht zumutbar.
+            Bei bekannt werdenden Rechtsverletzungen entfernen wir entsprechende
+            Links umgehend.
           </p>
         </Section>
 
         <Section title="Urheberrecht">
           <p>
-            Die auf dieser Website veröffentlichten Texte, Bilder und
-            Audioaufnahmen unterliegen dem deutschen Urheberrecht. Eine
-            Verwendung außerhalb dieser Website – insbesondere die
+            Die von der Schule erstellten Texte, Layouts und Grafiken dieser
+            Website unterliegen dem deutschen Urheberrecht. Fotos,
+            Audioaufnahmen und Erinnerungstexte, die von Schülerinnen und
+            Schülern, Lehrkräften oder Ehemaligen beigetragen werden, verbleiben
+            im Urheberrecht der jeweiligen Person; mit dem Einreichen räumen die
+            Beitragenden dem Gymnasium Neu Wulmstorf ein einfaches, zeitlich auf
+            die Dauer des Projekts beschränktes Nutzungsrecht zur
+            Veröffentlichung auf dieser Website ein (Details siehe{" "}
+            <Link href="/nutzungsbedingungen/" className={linkClass}>
+              Nutzungsbedingungen
+            </Link>
+            ). Eine Verwendung außerhalb dieser Website — insbesondere
             Vervielfältigung oder Weiterverbreitung von Fotos und
-            Audio-Interviews – bedarf der vorherigen schriftlichen Zustimmung
-            der Schule bzw. der jeweiligen Urheberinnen und Urheber. <Marker />
+            Audio-Interviews — bedarf der vorherigen schriftlichen Zustimmung
+            der Schule bzw. der jeweiligen Urheberin/des jeweiligen Urhebers.
           </p>
         </Section>
 
@@ -188,15 +195,16 @@ export default function ImpressumPage() {
           <p>
             Informationen zur Verarbeitung personenbezogener Daten finden Sie in
             unserer{" "}
-            <Link
-              href="/datenschutz/"
-              className="text-petrol underline decoration-petrol/30 underline-offset-2 transition-colors duration-150 hover:decoration-petrol"
-            >
+            <Link href="/datenschutz/" className={linkClass}>
               Datenschutzerklärung
             </Link>
             .
           </p>
         </Section>
+
+        <p className="mt-8 max-w-prose border-t border-paper-line pt-7 text-sm text-coal-soft">
+          Stand: August 2026
+        </p>
       </div>
     </div>
   );
