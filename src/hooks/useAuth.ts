@@ -45,8 +45,18 @@ export function useAuth() {
     role,
     isAdmin: role === "admin",
     isContributor: role === "admin" || role === "editor",
-    signIn: (email: string, password: string) =>
-      supabase.auth.signInWithPassword({ email, password }),
+    /**
+     * `captchaToken` ist das Merkmal aus der Turnstile-Prüfung. Ist die Prüfung
+     * im Supabase-Dashboard eingeschaltet, weist Supabase jede Anmeldung ohne
+     * gültiges Merkmal ab — geprüft wird also serverseitig, nicht hier.
+     * Ohne eingerichtete Prüfung bleibt das Feld leer und ändert nichts.
+     */
+    signIn: (email: string, password: string, captchaToken?: string) =>
+      supabase.auth.signInWithPassword({
+        email,
+        password,
+        options: captchaToken ? { captchaToken } : undefined,
+      }),
     signOut: () => supabase.auth.signOut(),
   };
 }

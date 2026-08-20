@@ -128,10 +128,6 @@ export default function EntryDetailModal({
   const restNarrow = tiles.length - TILES_NARROW;
   const restWide = tiles.length - TILES_WIDE;
 
-  const audioUrl = entry.audio_path
-    ? publicUrl("entry-audio", entry.audio_path)
-    : null;
-
   const meta = [
     entry.class_name ? `Klasse ${entry.class_name}` : null,
     entry.author_name ? `Erzählt von ${entry.author_name}` : null,
@@ -175,7 +171,6 @@ export default function EntryDetailModal({
 
     // Titelbild UND Galerie — sonst bleiben verwaiste Dateien im Storage liegen.
     await removeQuietly("entry-images", imagePaths);
-    await removeQuietly("entry-audio", [entry.audio_path]);
 
     onDeleted(entry.id);
     onClose();
@@ -355,23 +350,6 @@ export default function EntryDetailModal({
                     </button>
                   );
                 })}
-              </div>
-            </section>
-          )}
-
-          {/* ---------------------------------------------- Tonaufnahme */}
-          {audioUrl && (
-            <section className="mt-6">
-              <h3 className="label">Interview anhören</h3>
-              <div className="rounded-xl border border-paper-line bg-paper-sunk p-3">
-                <audio
-                  controls
-                  preload="none"
-                  src={audioUrl}
-                  className="block w-full"
-                >
-                  Dein Browser kann diese Tonaufnahme leider nicht abspielen.
-                </audio>
               </div>
             </section>
           )}

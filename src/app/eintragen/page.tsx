@@ -319,20 +319,101 @@ function EintragenView() {
 
   const editing = Boolean(editId) && entry !== null;
 
+  const formular = (
+    <EntryForm
+      key={
+        editing && entry
+          ? `${entry.id}:${reloadNonce}`
+          : voiceEntry
+            ? `stimme:${voiceEntry.id}`
+            : "neu"
+      }
+      session={session}
+      isAdmin={isAdmin}
+      entry={editing ? entry : null}
+      removed={editing && conflict === "deleted"}
+      onSaved={handleSaved}
+      voiceFor={editing ? null : voiceEntry}
+      /*
+        Die drei jüngsten eigenen Beiträge — der Weg zurück zum Tippfehler.
+        Sie stehen im ersten Schritt, wo neben den zwei großen Knöpfen Platz
+        ist. Wer schon bearbeitet oder gerade eine Erinnerung zu einem Thema
+        dazuschreibt, ist längst am Ziel und bekommt sie gar nicht erst.
+      */
+      intro={
+        !editId && !voiceId ? (
+          <RecentEntries userId={session.user.id} refreshKey={savedNonce} />
+        ) : null
+      }
+    />
+  );
+
+  /*
+   * Bearbeiten ist Nacharbeit am Schreibtisch: Dort stehen alle Felder offen
+   * untereinander, und die Seite darf ruhig scrollen.
+   */
+  if (editing) {
+    return (
+      <Shell>
+        <header className="animate-fade-up mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+              Gedächtnis der Zeit
+            </p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-coal">
+              Eintrag bearbeiten
+            </h1>
+            <p className="hint mt-1.5 leading-relaxed">
+              Angemeldet als <span className="font-semibold">{email}</span>
+              <span className="text-coal-faint"> · </span>
+              Rolle: {isAdmin ? "Admin" : "Eintrag"}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-ghost min-h-11 shrink-0"
+            onClick={() => void handleSignOut()}
+          >
+            Abmelden
+          </button>
+        </header>
+
+        {conflict && (
+          <EditConflictNotice
+            kind={conflict}
+            onReload={handleReload}
+            onDismiss={dismissConflict}
+          />
+        )}
+
+        {formular}
+
+        <LiveEntriesBadge
+          count={liveCount}
+          latestTitle={liveTitle}
+          onDismiss={dismissLive}
+        />
+      </Shell>
+    );
+  }
+
+  /*
+   * Der geführte Ablauf dagegen läuft auf einer Bühne von genau einer
+   * Bildschirmhöhe: Kopfzeile und Knopfleiste stehen fest, dazwischen liegt
+   * der Schritt. Die Kopfzeile ist deshalb eine Zeile und keine drei — jeder
+   * Millimeter hier fehlt unten beim Eingabefeld.
+   */
   return (
-    <Shell>
-      <header className="animate-fade-up mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+    <div className="stage">
+      <header className="animate-fade-up mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
-            Gedächtnis der Zeit
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-coal">
-            {editing ? "Eintrag bearbeiten" : "Neuer Eintrag"}
+          <h1 className="text-lg font-bold tracking-tight text-coal sm:text-xl">
+            {voiceEntry ? "Erinnerung ergänzen" : "Neuer Eintrag"}
           </h1>
-          <p className="hint mt-1.5 leading-relaxed">
-            Angemeldet als <span className="font-semibold">{email}</span>
+          <p className="hint truncate">
+            {email}
             <span className="text-coal-faint"> · </span>
-            Rolle: {isAdmin ? "Admin" : "Eintrag"}
+            {isAdmin ? "Admin" : "Eintrag"}
           </p>
         </div>
         <button
@@ -344,45 +425,13 @@ function EintragenView() {
         </button>
       </header>
 
-      {editing && conflict && (
-        <EditConflictNotice
-          kind={conflict}
-          onReload={handleReload}
-          onDismiss={dismissConflict}
-        />
-      )}
-
-      {/*
-        Die drei jüngsten eigenen Beiträge — der Weg zurück zum Tippfehler.
-        Nur über dem leeren Formular: Wer schon bearbeitet oder gerade eine
-        Erinnerung zu einem Thema dazuschreibt, ist längst am Ziel und braucht
-        keine Liste, die ihn woanders hinschickt.
-      */}
-      {!editId && !voiceId && (
-        <RecentEntries userId={session.user.id} refreshKey={savedNonce} />
-      )}
-
-      <EntryForm
-        key={
-          editing && entry
-            ? `${entry.id}:${reloadNonce}`
-            : voiceEntry
-              ? `stimme:${voiceEntry.id}`
-              : "neu"
-        }
-        session={session}
-        isAdmin={isAdmin}
-        entry={editing ? entry : null}
-        removed={editing && conflict === "deleted"}
-        onSaved={handleSaved}
-        voiceFor={editing ? null : voiceEntry}
-      />
+      {formular}
 
       <LiveEntriesBadge
         count={liveCount}
         latestTitle={liveTitle}
         onDismiss={dismissLive}
       />
-    </Shell>
+    </div>
   );
 }

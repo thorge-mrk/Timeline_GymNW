@@ -170,3 +170,175 @@ PLAN.md, README.md                     Plan-Kopie; Setup/Accounts/Deploy/Härtun
 
 - Nutzer: Cloudflare-Konto + Domain, echte Accounts + Passwörter, Impressum-/Datenschutztexte, echte Meilenstein-Inhalte (Registrierung erst nach Account-Anlage deaktivieren!).
 - Optional später: Turnstile-Captcha, Video-Embeds (`video_url` liegt bereit), Cloudflare-Cache vor Storage (falls > 5 GB Traffic/Monat), Kategorien-Verwaltung.
+
+---
+
+# Ausbaustufe 2 — abgestimmt am 20. August 2026
+
+Die Grundlage steht und läuft (58 Einträge, 28 Stimmen, 40 Bilder in der Datenbank).
+Dieser Abschnitt beschreibt, was als Nächstes gebaut wird, und warum es so und nicht
+anders gebaut wird.
+
+## Die vier Entscheidungen
+
+| Thema | Entscheidung |
+|---|---|
+| Eintragen | Jeder Schritt passt **auf einen Bildschirm** — gescrollt wird nur im langen Textfeld |
+| Schutz der Anmeldung | **Cloudflare Turnstile** vor dem Login **+ Eintrags-Limit in der Datenbank** |
+| Medien | Bilder bleiben **WebP in Supabase Storage**; **Audio-Interviews fallen komplett weg** |
+| Kameraflug | springt nach **5 Sekunden Ruhe** zum neuen Eintrag (vorher 8) |
+
+## 1. Eintragen ohne Scrollen
+
+**Problem am Aktionstag:** Wer auf dem iPad eine Erinnerung aufnimmt, tippt nicht für
+sich selbst — er tippt, während jemand daneben steht und erzählt. Jedes Scrollen ist
+eine Unterbrechung im Gespräch, und der „Weiter"-Knopf, der unter dem Bildschirmrand
+verschwindet, ist der häufigste Grund für „Und jetzt?".
+
+**Lösung:** Der geführte Ablauf bekommt eine feste Bühne von genau einer Bildschirmhöhe
+(`100dvh`, also inklusive der ein- und ausfahrenden Browserleisten auf dem iPad):
+
+```
+┌───────────────────────────────┐
+│ Fortschritt · Schritt 2 von 5 │  fest oben
+├───────────────────────────────┤
+│ Überschrift + ein Satz dazu   │
+│                               │  Inhalt — füllt den Rest,
+│ [ Eingabe ]                   │  scrollt NICHT
+│                               │
+├───────────────────────────────┤
+│ Zurück            Weiter →    │  fest unten, immer sichtbar
+└───────────────────────────────┘
+```
+
+- **Nur zwei Ausnahmen dürfen in sich scrollen:** das lange Erzähl-Textfeld und die
+  Zusammenfassung im letzten Schritt. Beide bekommen einen sichtbaren Rand, damit man
+  merkt, dass dort etwas weitergeht — der Rest der Seite steht still.
+- Die Tastatur des iPads schiebt nichts mehr weg: Die Bühne rechnet mit
+  `100dvh`, der Knopfbalken sitzt darüber, nicht darunter.
+- Kein Schritt wird zusammengelegt — die Schrittfolge bleibt, wie sie ist. Der Gewinn
+  kommt aus dem Layout, nicht aus weniger Fragen.
+
+## 2. Schutz von Anmeldung und Eintragen
+
+Die Anmeldeseite ist öffentlich erreichbar; das lässt sich bei einer statischen Website
+auch nicht ändern. Sie muss also aushalten, dass jemand sie findet.
+
+**Warum kein Cloudflare-Worker davor?** Weil er nichts sehen würde. Die Website liegt
+zwar bei Cloudflare, die Anmeldung selbst läuft aber direkt vom Browser zu Supabase —
+Cloudflare bekommt diesen Verkehr gar nicht zu Gesicht. Ein Worker müsste dafür
+sämtliche Supabase-Aufrufe umleiten; dann läuft die ganze Seite über sein Tageslimit
+von 100.000 Anfragen, statt wie bisher unbegrenzt statisch ausgeliefert zu werden.
+Man würde die wichtigste Eigenschaft der Architektur gegen den zweitbesten Schutz
+tauschen.
+
+**Stattdessen zwei Maßnahmen, die dort greifen, wo die Anfragen ankommen:**
+
+1. **Turnstile vor der Anmeldung.** Supabase prüft das Captcha-Merkmal serverseitig
+   (Auth → Bot and Abuse Protection). Ein Anmeldeversuch ohne gültiges, frisches
+   Merkmal wird abgewiesen, bevor das Passwort überhaupt geprüft wird — automatisiertes
+   Durchprobieren hört damit auf. Für Menschen ist es unsichtbar (kein Bilderrätsel).
+   Kostenlos, DSGVO-freundlicher als reCAPTCHA, und es braucht keinen eigenen Server.
+   - Der Site-Key kommt als `NEXT_PUBLIC_TURNSTILE_SITE_KEY` ins Frontend (öffentlich,
+     das ist so vorgesehen), der Secret-Key ausschließlich ins Supabase-Dashboard.
+   - **Ohne gesetzten Site-Key verhält sich die Seite exakt wie bisher.** Die Anmeldung
+     darf nicht davon abhängen, dass jemand vorher etwas konfiguriert hat.
+   - Ein Merkmal gilt nur einmal. Nach einem Fehlversuch wird das Widget zurückgesetzt,
+     sonst scheitert der zweite Versuch mit einer irreführenden Meldung.
+2. **Eintrags-Limit in der Datenbank.** Selbst ein angemeldetes Konto — etwa ein iPad,
+   das jemand unbeaufsichtigt mitnimmt — darf die Zeitachse nicht fluten. Ein Trigger
+   begrenzt pro Konto **10 Einträge je Minute und 150 je Stunde** (Stimmen: 20/Minute,
+   300/Stunde). Das liegt weit über allem, was ein Mensch im Gespräch tippt, und weit
+   unter dem, was ein Skript anrichten würde. Die Meldung kommt auf Deutsch zurück und
+   erscheint im Formular als freundlicher Hinweis, nicht als Fehler.
+
+Beides wirkt **serverseitig**. Das Formular kann man umgehen, die Datenbank nicht.
+
+## 3. Medien: Bilder bleiben, Interviews fallen weg
+
+**Audio-Interviews werden vollständig entfernt** — Spalte, Speicher-Eimer, Abspieler,
+Rechtetexte. Sie waren der einzige Posten, der die kostenlosen Grenzen wirklich hätte
+sprengen können (25 MB je Datei gegen 1 GB Speicher und 5 GB Traffic im Monat), und
+hochgeladen wurde nie eine: Die Datenbank enthält null Audio-Dateien. Was niemand
+nutzt, muss auch niemand pflegen — und der Datenschutzhinweis wird um eine
+Einwilligung kürzer.
+
+**Bilder** bleiben, wo sie sind: komprimiert im Browser auf max. 1600 px und als **WebP**
+(JPEG nur als Notnagel für sehr alte Geräte), im Schnitt 0,2–0,4 MB. Kein Cloudflare R2,
+kein Worker-Zwischenspeicher — beides wäre ein weiterer Baustein, den in zwei Jahren
+niemand mehr versteht, für ein Traffic-Problem, das die Schule noch nicht hat.
+
+*Bleibt als Reserve notiert, falls der Traffic doch klettert:* zusätzlich eine kleine
+Vorschau-Version (~480 px) beim Hochladen erzeugen und auf dem Zeitstrahl nur diese
+zeigen. Senkt den Traffic um das Fünf- bis Zehnfache und ändert nichts an der
+Architektur. Wird erst gebaut, wenn die Zahlen es verlangen.
+
+## 4. Kameraflug nach 5 Sekunden
+
+`IDLE_BEFORE_FLIGHT_MS` geht von 8000 auf **5000**. Lebendig genug für den Beamer in
+der Aula, ruhig genug, dass niemand beim Stöbern aus der Ansicht gerissen wird. Die
+Regel selbst bleibt: Wer zoomt oder schiebt, wird nie unterbrochen — der Flug wartet.
+
+## Umsetzung in dieser Reihenfolge
+
+1. Migration `0018`: Eintrags-Limit (Trigger auf `entries` und `entry_voices`).
+2. Migration `0019`: `audio_path` entfernen, Insert-Policy ohne Audio-Bedingung neu
+   setzen, Bucket `entry-audio` samt Policies löschen. Typen neu generieren.
+3. Frontend: Audio-Abspieler und -Reste raus; Rechtetexte anpassen.
+4. Eintrag-Flow auf Bildschirmhöhe umbauen (`form.css` + `EntryForm`-Rahmen).
+5. Turnstile-Baustein + Einbau in `/login`, `signIn` mit Merkmal, CSP erweitern.
+6. Kameraflug auf 5 s.
+7. README: Turnstile-Einrichtung, Limits, Audio-Streichung, aktualisierte Rechte-Matrix.
+
+## Verifikation
+
+- `npm run typecheck` und `npm run build` sauber; statischer Export unverändert möglich.
+- Limit-Test per SQL (Transaktion + Rollback): 11 Einträge in Folge als Eintrag-Konto →
+  der elfte wird mit deutscher Meldung abgewiesen; nach Ablauf des Fensters geht es weiter.
+- Nachweis, dass `audio_path` nirgends mehr auftaucht (Datenbank, Bundle, Texte).
+- Anmeldung ohne gesetzten Site-Key funktioniert unverändert (Rückfall-Pfad).
+- Bildschirmhöhen-Test im Browser: iPad-Hochformat, iPad-Querformat und Handy — auf
+  keinem Schritt darf die Seite scrollen, der „Weiter"-Knopf ist immer sichtbar.
+- `get_advisors` (security + performance) nach den Migrationen.
+
+## Ergebnis der Umsetzung (20. August 2026)
+
+Umgesetzt wie geplant, mit drei Abweichungen — alle drei aus dem, was beim Bauen
+sichtbar wurde:
+
+1. **Das Eintrags-Limit gilt auch für `admin`, nur mit mehr Luft** (60/Minute,
+   600/Stunde statt 10/150). Ursprünglich sollte die Verwaltung ausgenommen sein. Beim
+   Prüfen der Konten stellte sich heraus: **Alle acht eingerichteten Konten tragen die
+   Rolle `admin`** — eine Ausnahme für `admin` hätte also für niemanden eine Grenze
+   gelassen. (Die Rollen gehören vor dem Aktionstag geradegezogen, siehe
+   Go-Live-Checkliste im README.)
+2. **Der leere Audio-Eimer bleibt vorerst stehen.** Supabase verbietet das Löschen aus
+   den Storage-Tabellen per SQL (`storage.protect_delete`). Die Schreibrechte darauf
+   sind weg, der Eimer ist leer — entfernt wird er mit einem Klick im Dashboard.
+3. **Ein Fehler kam beim Testen ans Licht und wurde behoben:** Weil die Knopfleiste
+   jetzt außerhalb der Schritte steht, standen „Weiter“ (`type="button"`) und
+   „Auf den Zeitstrahl!“ (`type="submit"`) an derselben Stelle im Baum. React behielt
+   denselben DOM-Knopf und tauschte nur den Typ — mitten im laufenden Klick. Der Browser
+   wertet die Standardaktion erst nach den Ereignis-Behandlern aus, sah dort einen
+   Absende-Knopf und schickte das Formular ab: **Ein Klick auf „Weiter“ im vorletzten
+   Schritt speicherte den halbfertigen Eintrag.** Zwei verschiedene `key`s erzwingen nun
+   getrennte Knoten.
+
+**Gemessen im Browser** (Chromium, angemeldet als Eintrag-Konto, Supabase-Antworten
+lokal gestellt — der Browser dieser Umgebung kommt nicht an Supabase heran):
+
+| Ansicht | Seite scrollt | Knopfleiste sichtbar | Inhalt scrollt |
+|---|---|---|---|
+| iPad hoch (768×1024) | **nie** | immer | nur im Erzähl-Schritt (41 px) |
+| iPad quer (1024×768) | **nie** | immer | Schritt 1 und 3 leicht, Erzähl-Schritt |
+| Handy (390×844) | **nie** | immer | im Erzähl-Schritt (399 px) |
+
+Auf dem iPad — dem Gerät des Aktionstags — passt also jeder Schritt bis auf die letzte
+Zeile der Einwilligung auf den Schirm, und der Absende-Knopf steht immer da, wo man ihn
+sucht. Auf dem Handy bleibt der Erzähl-Schritt länger als der Schirm; das ist genau die
+Ausnahme, die abgesprochen war.
+
+**Verifiziert:** `npm run typecheck` und `npm run build` fehlerfrei, Export weiterhin rein
+statisch (8 Seiten). Limit-Test in der Datenbank (Transaktion + Rollback): zehn Einträge
+gehen durch, der elfte wird mit der deutschen Meldung abgewiesen. `audio_path` existiert
+weder in der Datenbank noch im Bundle noch in den Rechtstexten.

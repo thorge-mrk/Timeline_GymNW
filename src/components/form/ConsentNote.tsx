@@ -26,6 +26,12 @@ import Link from "next/link";
 export interface ConsentNoteProps {
   /** Was genau danach öffentlich sichtbar ist. Je nach Weg ein anderer Satz. */
   note: string;
+  /**
+   * Schlanke Fassung ohne Kasten — für den geführten Ablauf, wo jede
+   * Bildschirmhöhe zählt. Derselbe Text, nur ohne Rahmen und Polster: Was
+   * jemand vor dem Absenden zur Kenntnis nimmt, wird dadurch nicht weniger.
+   */
+  compact?: boolean;
 }
 
 function ExternalIcon() {
@@ -69,16 +75,30 @@ function LegalLink({
   );
 }
 
-export function ConsentNote({ note }: ConsentNoteProps) {
+export function ConsentNote({ note, compact = false }: ConsentNoteProps) {
   return (
-    <div className="rounded-xl border border-paper-line bg-paper-sunk p-3.5">
-      <p className="text-sm leading-relaxed text-coal">
+    <div
+      className={
+        compact
+          ? "border-t border-paper-line pt-3"
+          : "rounded-xl border border-paper-line bg-paper-sunk p-3.5"
+      }
+    >
+      <p
+        className={
+          compact
+            ? "text-[13px] leading-relaxed text-coal"
+            : "text-sm leading-relaxed text-coal"
+        }
+      >
         Mit dem Eintragen stimmst du den{" "}
         <LegalLink href="/nutzungsbedingungen/">Nutzungsbedingungen</LegalLink>{" "}
         und der{" "}
         <LegalLink href="/datenschutz/">Datenschutzerklärung</LegalLink> zu.
       </p>
-      <p className="hint mt-2 leading-relaxed">{note}</p>
+      <p className={compact ? "hint mt-1 leading-snug" : "hint mt-2 leading-relaxed"}>
+        {note}
+      </p>
     </div>
   );
 }
