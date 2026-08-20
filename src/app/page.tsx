@@ -26,12 +26,11 @@ import "@/components/timeline/timeline.css";
 
 /**
  * Nach dieser Ruhezeit gilt der Zeitstrahl als „unbenutzt" — dann fliegt die
- * Kamera von selbst zum nächsten neuen Eintrag. Fünf Sekunden sind der
- * Mittelweg: lebendig genug für den Beamer in der Aula, ruhig genug, dass
- * niemand beim Lesen aus der Ansicht gerissen wird. (Drei Sekunden waren
- * knapp für einen langen Text, acht wirkten auf der Tafel eingeschlafen.)
+ * Kamera von selbst zum nächsten neuen Eintrag. Acht Sekunden, weil vor der
+ * Tafel Menschen stehen und lesen: Wer einen langen Text durchgeht, hat nach
+ * drei Sekunden noch lange nicht aufgehört hinzusehen.
  */
-const IDLE_BEFORE_FLIGHT_MS = 5000;
+const IDLE_BEFORE_FLIGHT_MS = 8000;
 
 /** So oft wird geprüft, ob die Ruhezeit erreicht ist. */
 const IDLE_CHECK_MS = 1000;

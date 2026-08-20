@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageSpinner } from "@/components/form/Spinner";
-import { Turnstile, turnstileAktiv } from "@/components/form/Turnstile";
 import { useAuth } from "@/hooks/useAuth";
 
 /** Supabase antwortet auf Englisch — hier die deutschen Entsprechungen. */
@@ -24,9 +23,6 @@ function describeAuthError(raw: string): string {
     m.includes("request this after")
   ) {
     return "Zu viele Versuche — bitte kurz warten.";
-  }
-  if (m.includes("captcha")) {
-    return "Die Sicherheitsprüfung ist fehlgeschlagen. Bitte die Seite neu laden und es noch einmal versuchen.";
   }
   if (m.includes("email not confirmed")) {
     return "Diese E-Mail-Adresse ist noch nicht bestätigt — bitte beim Admin melden.";
@@ -49,15 +45,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /**
-   * Das Merkmal der Turnstile-Prüfung. Es gilt nur EINMAL — nach jedem
-   * Versuch fordert `captchaNonce` ein frisches an, sonst scheitert der
-   * zweite Anlauf an einem verbrauchten Merkmal statt am Passwort.
-   */
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
-  const [captchaNonce, setCaptchaNonce] = useState(0);
-  /** Prüfung eingerichtet, aber nicht ladbar (kein Netz, Skript blockiert). */
-  const [captchaBroken, setCaptchaBroken] = useState(false);
 
   // Bereits angemeldet? Dann direkt zum Formular.
   useEffect(() => {
@@ -74,32 +61,12 @@ export default function LoginPage() {
       return;
     }
 
-    /*
-     * Eingerichtete Prüfung, aber noch kein Merkmal: Das dauert normalerweise
-     * einen Wimpernschlag. Ein klarer Satz ist hier freundlicher als ein
-     * Anmeldeversuch, den Supabase ohnehin abweist.
-     */
-    if (turnstileAktiv && !captchaToken) {
-      setError(
-        captchaBroken
-          ? "Die Sicherheitsprüfung konnte nicht geladen werden. Bitte die Internetverbindung prüfen und die Seite neu laden."
-          : "Die Sicherheitsprüfung läuft noch — einen Moment, dann nochmal auf „Anmelden“."
-      );
-      return;
-    }
-
     setBusy(true);
     setError(null);
     try {
-      const { error: authError } = await signIn(
-        mail,
-        password,
-        captchaToken ?? undefined
-      );
+      const { error: authError } = await signIn(mail, password);
       if (authError) {
         setError(describeAuthError(authError.message));
-        // Verbrauchtes Merkmal gegen ein frisches tauschen.
-        setCaptchaNonce((n) => n + 1);
         setBusy(false);
         return;
       }
@@ -109,7 +76,6 @@ export default function LoginPage() {
       setError(
         describeAuthError(err instanceof Error ? err.message : String(err))
       );
-      setCaptchaNonce((n) => n + 1);
       setBusy(false);
     }
   }
@@ -209,17 +175,6 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-
-          {/*
-            Die Prüfung sitzt zwischen Passwort und Knopf: Sie ist Teil des
-            Anmeldens, nicht Beiwerk am Rand. Ohne eingerichteten Site-Key
-            rendert sie nichts und nimmt keinen Platz weg.
-          */}
-          <Turnstile
-            onToken={setCaptchaToken}
-            resetSignal={captchaNonce}
-            onUnavailable={() => setCaptchaBroken(true)}
-          />
 
           <button
             type="submit"

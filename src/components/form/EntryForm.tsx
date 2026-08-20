@@ -36,6 +36,16 @@ import { StepProgress, type StepDef } from "./StepProgress";
 import { SuccessCard } from "./SuccessCard";
 import { VoiceForm } from "./VoiceForm";
 
+/*
+ * Tonaufnahmen kann über dieses Formular niemand mehr hochladen — die Schule
+ * braucht sie nicht, also gibt es das Feld nicht mehr. Die Spalte audio_path
+ * bleibt trotzdem: Was früher aufgenommen wurde, spielt das Detail-Fenster
+ * weiter ab. Hier taucht der Eimer deshalb nur noch an einer Stelle auf, beim
+ * Löschen eines Eintrags — eine gelöschte Erinnerung soll keine Tonspur mit
+ * echten Stimmen im öffentlichen Speicher zurücklassen.
+ */
+const AUDIO_BUCKET = "entry-audio";
+
 const TITLE_MAX = 120;
 const DESCRIPTION_MAX = 3000;
 const CLASS_MAX = 30;
@@ -388,13 +398,6 @@ export interface EntryFormProps {
    * kein neuer Eintrag angeboten, sondern gleich die Stimme.
    */
   voiceFor?: Entry | null;
-  /**
-   * Beiwerk, das nur im ersten Schritt Platz hat — dort, wo nur zwei große
-   * Knöpfe stehen. „Deine letzten Einträge“ gehört dorthin und nicht über
-   * jeden Schritt: Der Weg zurück zum Tippfehler ist wichtig, aber nicht
-   * wichtig genug, um auf jeder Bildschirmhöhe Platz wegzunehmen.
-   */
-  intro?: React.ReactNode;
 }
 
 export function EntryForm({
@@ -404,7 +407,6 @@ export function EntryForm({
   removed = false,
   onSaved,
   voiceFor = null,
-  intro = null,
 }: EntryFormProps) {
   const router = useRouter();
   const isEdit = entry !== null;
@@ -874,6 +876,11 @@ export function EntryForm({
          * mitgeschicktes „null“ wäre eine Behauptung über etwas, das dieses
          * Konto nicht entscheiden darf. Dasselbe gilt beim Nachbessern eigener
          * Beiträge (Policy entries_update_own_editor).
+         *
+         * audio_path steht hier gar nicht mehr: Hochladen kann das niemand
+         * mehr, und was gespeichert ist, soll ein Speichern überleben — ein
+         * mitgeschicktes „null“ würde vorhandene Tonspuren stillschweigend
+         * abhängen.
          */
         ...(isAdmin
           ? {
@@ -970,6 +977,10 @@ export function EntryForm({
       for (const path of storedImagePaths) {
         await removeQuietly(IMAGE_BUCKET, path);
       }
+      // Hochladen kann Ton niemand mehr — eine ALTE Aufnahme muss beim Löschen
+      // trotzdem mit weg. Sonst bliebe die Stimme eines echten Menschen im
+      // öffentlichen Speicher liegen, obwohl seine Erinnerung gelöscht wurde.
+      await removeQuietly(AUDIO_BUCKET, entry.audio_path);
       router.replace("/");
     } catch (err) {
       failWith(
@@ -1203,9 +1214,7 @@ export function EntryForm({
                   <textarea
                     id="entry-description"
                     rows={5}
-                    className={`input leading-relaxed ${
-                      wizard ? "min-h-28" : "min-h-32"
-                    }`}
+                    className="input min-h-32 leading-relaxed"
                     placeholder="Wir haben das Fußballturnier gewonnen. Alle haben mitgefiebert."
                     maxLength={DESCRIPTION_MAX}
                     value={description}
@@ -1283,13 +1292,7 @@ export function EntryForm({
               </p>
             </div>
 
-            {/*
-              6 und 7 — Name und Klasse stehen nebeneinander, sobald der
-              Bildschirm breit genug ist. Zwei kurze Felder untereinander
-              kosten auf dem iPad eine halbe Bildschirmhöhe, die dem Erzählfeld
-              darüber fehlt.
-            */}
-            <div className="grid gap-5 sm:grid-cols-2">
+            {/* 6 — Der Name. Freiwillig, und das steht auch so da. */}
             <div>
               <label className="label" htmlFor="entry-author">
                 Wie heißt du?
@@ -1331,7 +1334,6 @@ export function EntryForm({
                 </p>
               </div>
             )}
-            </div>
           </>
         );
 
@@ -1496,18 +1498,12 @@ export function EntryForm({
       ref={formRef}
       onSubmit={(e) => void handleSubmit(e)}
       onKeyDown={handleKeyDown}
-      className={
-        wizard
-          ? "card animate-fade-up stage__form p-4 shadow-(--shadow-card-lg) sm:p-6"
-          : "card animate-fade-up space-y-7 p-5 shadow-(--shadow-card-lg) sm:p-7"
-      }
+      className="card animate-fade-up space-y-7 p-5 shadow-(--shadow-card-lg) sm:p-7"
     >
       {error && (
         <div
           role="alert"
-          className={`animate-pop-in flex items-start gap-2.5 rounded-2xl border border-brick/25 bg-brick/8 p-4 text-sm font-semibold text-ink-bad${
-            wizard ? " mb-4 flex-none" : ""
-          }`}
+          className="animate-pop-in flex items-start gap-2.5 rounded-2xl border border-brick/25 bg-brick/8 p-4 text-sm font-semibold text-ink-bad"
         >
           <AlertIcon />
           <span>{error}</span>
@@ -1515,7 +1511,7 @@ export function EntryForm({
       )}
 
       {wizard && (
-        <div className="stage__top mb-4">
+        <>
           <StepProgress
             steps={steps}
             current={step}
@@ -1527,14 +1523,10 @@ export function EntryForm({
           <p aria-live="polite" className="sr-only">
             Schritt {step + 1} von {steps.length}
           </p>
-        </div>
+        </>
       )}
 
-      <div
-        className={wizard ? "stage__body" : undefined}
-        data-stage-body={wizard ? "" : undefined}
-      >
-        <div className="step-flow" data-dir={wizard ? dir : undefined}>
+      <div className="step-flow" data-dir={wizard ? dir : undefined}>
         {steps.map((definition, index) => {
           const problem = checkStep === index ? stepProblem(index) : null;
           const open = !wizard || index === step;
@@ -1562,9 +1554,7 @@ export function EntryForm({
               </h2>
               <p className="hint mt-1 leading-relaxed">{definition.lead}</p>
 
-              <div className={wizard ? "mt-4 space-y-4" : "mt-5 space-y-6"}>
-                {stepContent(definition.key)}
-              </div>
+              <div className="mt-5 space-y-6">{stepContent(definition.key)}</div>
 
               {problem && (
                 <p
@@ -1585,11 +1575,10 @@ export function EntryForm({
                 Admin-Konto „Prüfen und absenden“).
               */}
               {wizard && index === lastStep && (
-                <div className="mt-4">
+                <div className="mt-6">
                   {/* „und Bildern“ steht nur da, wo es auch stimmen kann:
                       Fotos ergänzt allein das Projektteam. */}
                   <ConsentNote
-                    compact
                     note={
                       isMoment
                         ? "Dein Beitrag ist danach für alle Besucherinnen und Besucher der Website öffentlich sichtbar — in der Erinnerungs-Wolke, mit allem, was du hier eingetragen hast."
@@ -1601,78 +1590,50 @@ export function EntryForm({
                 </div>
               )}
 
-              {/* Beiwerk nur im ersten Schritt — dort ist Platz dafür. */}
-              {wizard && index === 0 && intro && (
-                <div className="mt-7 border-t border-paper-line pt-6">
-                  {intro}
+              {wizard && (
+                <div className="mt-7 flex items-center gap-2.5 border-t border-paper-line pt-6">
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      className="btn-ghost min-h-12 shrink-0"
+                      disabled={busy}
+                      onClick={() => goTo(index - 1)}
+                    >
+                      <ArrowIcon back />
+                      Zurück
+                    </button>
+                  )}
+                  {index < lastStep ? (
+                    <button
+                      type="button"
+                      className="btn-accent min-h-12 flex-1 text-base"
+                      disabled={busy}
+                      onClick={() => goTo(index + 1)}
+                    >
+                      Weiter
+                      <ArrowIcon />
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="btn-accent min-h-12 flex-1 text-base"
+                      disabled={busy || removed}
+                    >
+                      {busy && phase !== "deleting" && (
+                        <span
+                          aria-hidden
+                          className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
+                        />
+                      )}
+                      {submitLabel}
+                    </button>
+                  )}
                 </div>
               )}
             </section>
           );
         })}
-        </div>
       </div>
-
-      {/*
-        Die Knopfleiste steht fest am unteren Rand der Bühne — außerhalb des
-        Teils, der gleiten darf. Sie ist damit immer sichtbar, egal wie lang
-        der Text im Schritt ist. Sie kennt nur den aktuellen Schritt; die
-        Schritte selbst tragen keine Knöpfe mehr.
-      */}
-      {wizard && (
-        <div className="stage__foot mt-4 border-t border-paper-line pt-4">
-          <div className="flex items-center gap-2.5">
-            {step > 0 && (
-              <button
-                type="button"
-                className="btn-ghost min-h-12 shrink-0"
-                disabled={busy}
-                onClick={() => goTo(step - 1)}
-              >
-                <ArrowIcon back />
-                Zurück
-              </button>
-            )}
-            {/*
-              Die beiden Knöpfe brauchen verschiedene `key`s, obwohl sie an
-              derselben Stelle stehen. Ohne sie behält React denselben
-              DOM-Knopf und tauscht nur type="button" gegen type="submit" —
-              mitten im laufenden Klick. Der Browser wertet die Standardaktion
-              erst NACH den Ereignis-Behandlern aus, sieht dort einen
-              Absende-Knopf und schickt das Formular ab. Ergebnis: Ein Klick
-              auf „Weiter“ im vorletzten Schritt speichert den halbfertigen
-              Eintrag. Verschiedene Schlüssel erzwingen einen neuen Knoten.
-            */}
-            {step < lastStep ? (
-              <button
-                key="weiter"
-                type="button"
-                className="btn-accent min-h-12 flex-1 text-base"
-                disabled={busy}
-                onClick={() => goTo(step + 1)}
-              >
-                Weiter
-                <ArrowIcon />
-              </button>
-            ) : (
-              <button
-                key="absenden"
-                type="submit"
-                className="btn-accent min-h-12 flex-1 text-base"
-                disabled={busy || removed}
-              >
-                {busy && phase !== "deleting" && (
-                  <span
-                    aria-hidden
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-navy/25 border-t-navy [animation-duration:0.72s]"
-                  />
-                )}
-                {submitLabel}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Im Bearbeiten-Modus steht der Absende-Knopf einmal unter allem. */}
       {!wizard && (
@@ -1697,6 +1658,13 @@ export function EntryForm({
         </div>
       )}
 
+      {wizard && step === lastStep && (
+        <p className="hint">
+          Mit <span className="font-bold text-fox-deep">*</span> markierte Felder
+          sind Pflichtfelder.
+        </p>
+      )}
+
       {isEdit && isAdmin && (
         <div className="border-t border-paper-line pt-7">
           <button
@@ -1714,7 +1682,7 @@ export function EntryForm({
             {phase === "deleting" ? "Wird gelöscht …" : "Eintrag löschen"}
           </button>
           <p className="hint mt-3">
-            Löscht den Eintrag samt Bildern dauerhaft.
+            Löscht den Eintrag samt Bild und Audio dauerhaft.
           </p>
         </div>
       )}

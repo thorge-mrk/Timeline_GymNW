@@ -174,8 +174,8 @@ export default function ImpressumPage() {
         <Section title="Urheberrecht">
           <p>
             Die von der Schule erstellten Texte, Layouts und Grafiken dieser
-            Website unterliegen dem deutschen Urheberrecht. Fotos und
-            Erinnerungstexte, die von Schülerinnen und
+            Website unterliegen dem deutschen Urheberrecht. Fotos,
+            Audioaufnahmen und Erinnerungstexte, die von Schülerinnen und
             Schülern, Lehrkräften oder Ehemaligen beigetragen werden, verbleiben
             im Urheberrecht der jeweiligen Person; mit dem Einreichen räumen die
             Beitragenden dem Gymnasium Neu Wulmstorf ein einfaches, zeitlich auf
@@ -185,8 +185,8 @@ export default function ImpressumPage() {
               Nutzungsbedingungen
             </Link>
             ). Eine Verwendung außerhalb dieser Website — insbesondere
-            Vervielfältigung oder Weiterverbreitung von Fotos — bedarf der
-            vorherigen schriftlichen Zustimmung
+            Vervielfältigung oder Weiterverbreitung von Fotos und
+            Audio-Interviews — bedarf der vorherigen schriftlichen Zustimmung
             der Schule bzw. der jeweiligen Urheberin/des jeweiligen Urhebers.
           </p>
         </Section>

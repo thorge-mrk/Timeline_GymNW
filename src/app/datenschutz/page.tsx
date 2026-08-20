@@ -114,7 +114,7 @@ export default function DatenschutzPage() {
               Art. 6 Abs. 1 lit. e DSGVO i. V. m. § 3 NDSG
             </strong>{" "}
             (Niedersächsisches Datenschutzgesetz). Für die Veröffentlichung von
-            Namen, Fotos und persönlichen Erinnerungen holen wir
+            Namen, Fotos, Audioaufnahmen und persönlichen Erinnerungen holen wir
             zusätzlich eine{" "}
             <strong className="font-semibold text-coal">
               ausdrückliche Einwilligung nach Art. 6 Abs. 1 lit. a DSGVO
