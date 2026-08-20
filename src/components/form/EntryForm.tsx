@@ -37,16 +37,6 @@ import { StepProgress, type StepDef } from "./StepProgress";
 import { SuccessCard } from "./SuccessCard";
 import { FALLBACK_BODY, VoiceForm } from "./VoiceForm";
 
-/*
- * Tonaufnahmen kann über dieses Formular niemand mehr hochladen — die Schule
- * braucht sie nicht, also gibt es das Feld nicht mehr. Die Spalte audio_path
- * bleibt trotzdem: Was früher aufgenommen wurde, spielt das Detail-Fenster
- * weiter ab. Hier taucht der Eimer deshalb nur noch an einer Stelle auf, beim
- * Löschen eines Eintrags — eine gelöschte Erinnerung soll keine Tonspur mit
- * echten Stimmen im öffentlichen Speicher zurücklassen.
- */
-const AUDIO_BUCKET = "entry-audio";
-
 const TITLE_MAX = 120;
 const DESCRIPTION_MAX = 3000;
 const CLASS_MAX = 30;
@@ -950,11 +940,6 @@ export function EntryForm({
          * mitgeschicktes „null“ wäre eine Behauptung über etwas, das dieses
          * Konto nicht entscheiden darf. Dasselbe gilt beim Nachbessern eigener
          * Beiträge (Policy entries_update_own_editor).
-         *
-         * audio_path steht hier gar nicht mehr: Hochladen kann das niemand
-         * mehr, und was gespeichert ist, soll ein Speichern überleben — ein
-         * mitgeschicktes „null“ würde vorhandene Tonspuren stillschweigend
-         * abhängen.
          */
         ...(isAdmin
           ? {
@@ -1051,10 +1036,6 @@ export function EntryForm({
       for (const path of storedImagePaths) {
         await removeQuietly(IMAGE_BUCKET, path);
       }
-      // Hochladen kann Ton niemand mehr — eine ALTE Aufnahme muss beim Löschen
-      // trotzdem mit weg. Sonst bliebe die Stimme eines echten Menschen im
-      // öffentlichen Speicher liegen, obwohl seine Erinnerung gelöscht wurde.
-      await removeQuietly(AUDIO_BUCKET, entry.audio_path);
       router.replace("/");
     } catch (err) {
       failWith(
