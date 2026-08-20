@@ -2,6 +2,7 @@
 
 import { useMemo, useRef } from "react";
 import { categoryById } from "@/lib/categories";
+import { peopleFor } from "@/lib/entryGroups";
 import type { Entry, Voice } from "@/lib/types";
 import MemoryCloudFull, { type CloudWord } from "./MemoryCloudFull";
 import "./memoryCloud.css";
@@ -196,7 +197,7 @@ export default function MemoryCloud({
   const words = useMemo<CloudWord[]>(() => {
     const counted = entries.map((entry) => ({
       entry,
-      memories: Math.max(1, voiceCount(entry.id) + 1),
+      memories: peopleFor(entry, voiceCount(entry.id)),
       weight: 0,
       label: keyword(entry.title),
     }));

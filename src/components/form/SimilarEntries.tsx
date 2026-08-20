@@ -4,6 +4,7 @@ import { categoryById, categoryPillStyle } from "@/lib/categories";
 import { formatEntryDate } from "@/lib/dates";
 import { richTextToPlain } from "@/lib/richText";
 import type { SimilarHit } from "@/lib/similarity";
+import { peopleFor } from "@/lib/entryGroups";
 import type { Entry } from "@/lib/types";
 import "./similarEntries.css";
 
@@ -114,7 +115,7 @@ export default function SimilarEntries({
           /* Der Eintrag selbst ist die erste Erinnerung — genauso zählt es die
              Erinnerungs-Wolke, und zwei verschiedene Zahlen für dieselbe Sache
              wären nur verwirrend. */
-          const memories = voiceCount(entry.id) + 1;
+          const memories = peopleFor(entry, voiceCount(entry.id));
           const plain = richTextToPlain(entry.description).trim();
           const excerpt = plain.slice(0, EXCERPT_MAX);
 
