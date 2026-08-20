@@ -34,55 +34,6 @@ function prefersReducedMotion(): boolean {
 }
 
 /* -------------------------------------------------------------------------- *
- * Geräte-Vollbild
- *
- * Safari kennt die Norm-API teils nur mit Präfix (macOS, iPad), auf dem iPhone
- * gibt es sie für beliebige Elemente gar nicht. Deshalb sind alle Aufrufe
- * abgesichert: Scheitert der Wunsch, bleibt es bei der App-Hälfte des
- * Vollbilds (Fußzeile aus) — die funktioniert immer.
- * -------------------------------------------------------------------------- */
-
-type FullscreenRoot = HTMLElement & {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-};
-type FullscreenDocument = Document & {
-  webkitFullscreenElement?: Element | null;
-  webkitExitFullscreen?: () => Promise<void> | void;
-};
-
-function currentFullscreenElement(): Element | null {
-  const doc = document as FullscreenDocument;
-  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
-}
-
-async function enterDeviceFullscreen(): Promise<void> {
-  const root = document.documentElement as FullscreenRoot;
-  try {
-    if (typeof root.requestFullscreen === "function") {
-      await root.requestFullscreen();
-    } else if (typeof root.webkitRequestFullscreen === "function") {
-      await root.webkitRequestFullscreen();
-    }
-  } catch {
-    /* Abgelehnt (iPhone, Richtlinie, fehlende Geste) — bewusst folgenlos. */
-  }
-}
-
-async function exitDeviceFullscreen(): Promise<void> {
-  const doc = document as FullscreenDocument;
-  try {
-    if (!currentFullscreenElement()) return;
-    if (typeof doc.exitFullscreen === "function") {
-      await doc.exitFullscreen();
-    } else if (typeof doc.webkitExitFullscreen === "function") {
-      await doc.webkitExitFullscreen();
-    }
-  } catch {
-    /* Auch das Verlassen darf nichts umwerfen. */
-  }
-}
-
-/* -------------------------------------------------------------------------- *
  * Eine Menüzeile mit echtem Schalter
  * -------------------------------------------------------------------------- */
 
@@ -142,14 +93,9 @@ export default function SettingsMenu() {
      jedem Öffnen neu anmelden müssen. */
   const openRef = useRef(false);
   const closingRef = useRef(false);
-  const fullscreenRef = useRef(settings.fullscreen);
 
   const menuId = useId();
   const titleId = `${menuId}-title`;
-
-  useEffect(() => {
-    fullscreenRef.current = settings.fullscreen;
-  }, [settings.fullscreen]);
 
   useEffect(() => () => window.clearTimeout(exitTimer.current), []);
 
@@ -233,28 +179,23 @@ export default function SettingsMenu() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, closeMenu]);
 
-  // Vollbild kann jederzeit von außen enden — per Escape, per Geste oder weil
-  // der Browser es beendet. Dann muss der Schalter zurückfallen.
-  useEffect(() => {
-    const onFullscreenChange = () => {
-      if (!currentFullscreenElement() && fullscreenRef.current) {
-        update({ fullscreen: false });
-      }
-    };
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
-      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
-    };
-  }, [update]);
-
-  /** Erst die App-Hälfte setzen, dann das Gerät fragen. */
+  /**
+   * Mehr Platz — eine Zeile Layout, kein Geräte-Vollbild.
+   *
+   * Früher hat dieser Schalter zusätzlich `requestFullscreen()` gerufen und
+   * den Browser in den echten Vollbildmodus geschickt. Auf dem Smartboard in
+   * der Aula ging das schief: Die Anzeige dort läuft in einem eingebetteten
+   * Browser, der den Wunsch nicht sauber bedient — mal blieb der Bildschirm
+   * schwarz, mal ließ sich die Seite danach nicht mehr bedienen.
+   *
+   * Deshalb tut der Schalter jetzt nur noch das, was er auf jedem Gerät
+   * zuverlässig kann: Die Fußzeile fällt aus dem Baum (SiteFooter gibt `null`
+   * zurück), und weil der Seitenrahmen ein Flex-Layout ist, wächst der Inhalt
+   * von selbst in ihre Höhe hinein. Kein Browser wird gefragt, also kann auch
+   * keiner Nein sagen.
+   */
   const toggleFullscreen = useCallback(() => {
-    const next = !settings.fullscreen;
-    update({ fullscreen: next });
-    // Noch im Klick-Ereignis: nur so gilt die Nutzergeste für den Browser.
-    void (next ? enterDeviceFullscreen() : exitDeviceFullscreen());
+    update({ fullscreen: !settings.fullscreen });
   }, [settings.fullscreen, update]);
 
   const toggleRealtime = useCallback(() => {
@@ -363,8 +304,8 @@ export default function SettingsMenu() {
 
           <div id={menuId} role="menu" aria-labelledby={titleId}>
             <ToggleItem
-              label="Vollbildmodus"
-              description="Blendet die Fußzeile aus und nutzt den ganzen Bildschirm — ideal für den Beamer in der Aula."
+              label="Mehr Platz"
+              description="Nimmt die Fußzeile weg — der Zeitstrahl bekommt ihre Höhe dazu. Gut für den Beamer in der Aula."
               checked={settings.fullscreen}
               onToggle={toggleFullscreen}
             />

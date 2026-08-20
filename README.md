@@ -1,80 +1,116 @@
 # Zeitstrahl · Gymnasium Neu Wulmstorf
 
-> **Das Gedächtnis der Zeit** — die interaktive Zeitstrahl-Website des Gymnasiums Neu Wulmstorf.
-> Öffentlich unter [zeitstrahl-gymnw.de](https://zeitstrahl-gymnw.de)
+> **Das Gedächtnis der Zeit** — die interaktive Zeitstrahl-Website des Gymnasiums
+> Neu Wulmstorf. Öffentlich unter [zeitstrahl-gymnw.de](https://zeitstrahl-gymnw.de)
 
 ---
 
-## 1. Projekt
+## 1. Worum es geht
 
 Das Gymnasium Neu Wulmstorf besteht seit **1971**. Der Zeitstrahl macht diese Geschichte
 sichtbar: eine öffentliche, zoombare Zeitachse, auf der die **Meilensteine der Schule**
-(Gründung, Einweihungen, Jubiläen — große Bildkarten) und die **persönlichen Erinnerungen**
-von Schülerinnen und Schülern, Lehrkräften und Ehemaligen nebeneinander stehen.
+und die **persönlichen Erinnerungen** von Schülerinnen und Schülern, Lehrkräften und
+Ehemaligen nebeneinander stehen.
 
-Herzstück ist der **Aktionstag**: Auf Schul-iPads melden sich einige wenige
-Eintrag-Accounts an und tippen ein, was Besucherinnen und Besucher erzählen. Jeder neue
-Eintrag erscheint **live und ohne Neuladen** bei allen, die die Seite gerade offen haben —
-auf dem Beamer in der Aula genauso wie auf dem Handy zu Hause.
-
-Lesen darf jeder, ohne Anmeldung. Schreiben dürfen nur die von der Schule eingerichteten
-Accounts. Die Seite ist durchgehend deutsch.
+Herzstück ist der **Aktionstag**: Auf Schul-iPads melden sich Eintrag-Konten an und tippen
+ein, was Besucherinnen und Besucher erzählen. Lesen darf jeder, ohne Anmeldung. Schreiben
+dürfen nur die von der Schule eingerichteten Konten. Die Seite ist durchgehend deutsch.
 
 Das Design folgt der Schulwebsite [www.gym-nw.de](https://www.gym-nw.de): warmes
 **Papier-Weiß** statt kaltem Weiß, **Schul-Navy** für Kopfzeile und Zeitachse,
-**Fuchs-Orange** als sparsam eingesetzter Akzent (das Wappentier der Schule ist der Fuchs),
-dazu Open Sans und weiche Kartenschatten.
+**Fuchs-Orange** als sparsamer Akzent (das Wappentier der Schule ist der Fuchs), dazu
+Open Sans und weiche Kartenschatten.
 
 ---
 
-## 2. Features
+## 2. Die zentrale Idee: zwei Arten von Erinnerung
+
+Nicht jede Erinnerung hat ein Datum. „Meine Einschulung", „die Pausen mit Freunden",
+„der Geschichtsunterricht" — das sind vollständige Erinnerungen **ohne Jahreszahl**. Sie
+auf ein geratenes Datum zu schieben wäre eine Erfindung, sie wegzulassen ein Verlust.
+
+Deshalb fragt das Formular als **allererstes**, um welche Art es geht:
+
+| Auswahl | Beispiel | Wo es landet |
+| --- | --- | --- |
+| **Zeitstrahl-Eintrag** | „Sommerkonzert am 15. Juni" | auf der Zeitachse, am Datum |
+| **Moment an der Schule** | „Pausen mit Freunden" | in der **Erinnerungs-Wolke** |
+
+### Die Erinnerungs-Wolke
+
+Alle Einträge ohne Datum bilden eine Wortwolke unter dem Zeitstrahl. **Je mehr Menschen
+sich an dasselbe erinnern, desto größer steht das Wort.** Ein Klick öffnet das Thema mit
+allen Stimmen dazu. Unter dem Zeitstrahl steht dauerhaft ein schmales Band mit den fünf
+größten Wörtern; ein Klick darauf springt direkt in dieses Thema.
+
+### Stimmen: ein Thema, viele Menschen
+
+Erzählen fünf Leute von „Klassenfahrten", entstehen **nicht fünf Einträge**, sondern ein
+Thema mit fünf Stimmen. Beim Tippen des Titels sucht die Seite nach ähnlichen vorhandenen
+Einträgen und bietet an, sich dort anzuhängen. Bei **exakt gleichem Titel** geschieht das
+automatisch, ohne Rückfrage.
+
+Daraus ergibt sich die **Wichtigkeit von selbst**: Ein Thema mit vielen Stimmen wird auf
+dem Zeitstrahl größer dargestellt und steht in der Wolke weiter vorne. Niemand muss
+ankreuzen, dass etwas wichtig war — das entscheidet, wie viele Menschen es erwähnen.
+
+---
+
+## 3. Was die Seite kann
 
 - **Zoombarer Zeitstrahl** — Mausrad, Ziehen, Touch und Pinch-Geste auf iPad und Handy.
   Beim Hineinzoomen wird die Achse feiner: Jahrzehnte → Jahre → Monate. Gerendert wird
   nicht per CSS-Skalierung, sondern echt neu positioniert — Text bleibt in jeder Zoomstufe
-  gestochen scharf.
-- **Drei Stufen der Wichtigkeit** — je nach Rang wird ein Eintrag anders dargestellt:
+  scharf.
+- **Drei Darstellungsstufen** — je nach Rang sieht ein Eintrag anders aus:
 
-  | Stufe | Wer darf das? | Darstellung auf dem Zeitstrahl |
+  | Stufe | Wer darf das setzen? | Darstellung |
   | --- | --- | --- |
   | **Meilenstein** | nur `admin` | große Bildkarte mit Jahreszahl |
-  | **Wichtig** | `admin` **und** `editor` | mittelgroße Karte mit Bild |
+  | **Wichtig** | nur `admin` (oder durch viele Stimmen) | mittelgroße Karte |
   | normal | alle Konten | farbige Pille |
 
-  Wird der Platz eng, stuft der Zeitstrahl von unten herunter: erst normale Einträge,
-  dann wichtige — Meilensteine bleiben am längsten groß.
-- **Titelbild + Bildergalerie** — ein Titelbild erscheint auf dem Zeitstrahl und oben im
-  Eintrag; weitere Bilder (bis zu 12) lassen sich anhängen und im Vollbild durchblättern
-  (Pfeile, Wischen, Tastatur).
-- **Kategorien + Klassen-Filter** — Filter-Chips für Schule, Schüler, Lehrkräfte,
-  Ehemalige, Sonstiges; bei „Schüler“ zusätzlich nach Klasse bzw. Jahrgang („8a“,
-  „Abi 1996“).
-- **Schreiben wie in einem Textprogramm** — Überschriften, Aufzählungen sowie fett und
-  kursiv lassen sich direkt im Eingabefeld setzen. Gespeichert wird schlichter Text mit
-  wenigen Markierungen, dargestellt wird er aus sicheren Bausteinen — fremdes HTML aus der
-  Zwischenablage kann nicht durchrutschen.
+  Wird der Platz eng, stuft der Zeitstrahl von unten herunter: erst normale Einträge, dann
+  wichtige — Meilensteine bleiben am längsten groß.
+- **Titelbild + Bildergalerie** — bis zu 12 Bilder je Eintrag, im Vollbild durchblätterbar
+  (Pfeile, Wischen, Tastatur). **Hochladen darf nur ein Admin-Konto** — so steht es auch
+  in der Datenschutzerklärung.
+- **Kategorien + Klassen-Filter** — Chips für Schule, Schüler, Lehrkräfte, Ehemalige,
+  Sonstiges; bei „Schüler" zusätzlich nach Klasse oder Jahrgang („8a", „Abi 1996").
+- **Schreiben wie in einem Textprogramm** — Überschriften, Aufzählungen, fett und kursiv
+  direkt im Eingabefeld. Gespeichert wird schlichter Text mit wenigen Markierungen,
+  dargestellt aus sicheren Bausteinen — fremdes HTML aus der Zwischenablage kann nicht
+  durchrutschen.
 - **Smarte Datumseingabe** — es genügt das Jahr. `1996`, `3.1996` und `12.3.1996` werden
-  automatisch verstanden und live als „1996“ / „März 1996“ / „12. März 1996“ zurückgemeldet.
-  Nur-Jahr-Einträge landen in der Jahresmitte.
-- **Live-Updates ohne Reload** — neue Einträge erscheinen sofort bei allen Besuchern.
-  Unten links sammelt ein kleiner Kreis die neuen Einträge und zeigt ihre Anzahl; ein Klick
-  springt der Reihe nach zu ihnen. Rührt niemand die Seite an, fliegt die Kamera nach
-  **8 Sekunden Ruhe** von selbst zum nächsten neuen Eintrag — wer gerade zoomt oder
-  schiebt, wird dabei nie unterbrochen.
+  verstanden und live als „1996" / „März 1996" / „12. März 1996" zurückgemeldet.
+- **Begrüßung beim ersten Besuch** — ein kurzer Willkommensgruß, der sich nach sieben
+  Sekunden von selbst verabschiedet und bei der ersten Berührung sofort. Er erscheint
+  **einmal je Gerät**; wer die Seite kennt, sieht ihn nicht wieder.
+- **Live-Übertragung (standardmäßig AUS)** — eingeschaltet erscheinen neue Einträge sofort
+  bei allen Besuchern. Unten links sammelt ein Kreis die neuen Einträge und zeigt ihre
+  Anzahl; ein Klick springt der Reihe nach zu ihnen. Rührt niemand die Seite an, fliegt die
+  Kamera nach **8 Sekunden Ruhe** von selbst zum nächsten neuen Eintrag — wer gerade zoomt
+  oder schiebt, wird nie unterbrochen.
+
+  > Warum standardmäßig aus? Ein Zeitstrahl, der sich von selbst bewegt, ist auf dem Beamer
+  > in der Aula ein Fest und am Handy in der Pause eine Störung. Wer den Effekt will,
+  > schaltet ihn im Zahnrad-Menü ein.
 - **Einstellungen (Zahnrad oben rechts)**
-  - **Vollbildmodus** — blendet die Fußzeile aus und fordert den Vollbildmodus des Geräts
-    an. Ideal für den Beamer in der Aula.
-  - **Live-Übertragung** — lässt sich abschalten. Dann sieht man Änderungen erst nach dem
-    Neuladen. Die Einstellung merkt sich das Gerät.
+  - **Mehr Platz** — nimmt die Fußzeile weg, der Zeitstrahl bekommt ihre Höhe dazu.
+    Bewusst **kein** Geräte-Vollbild: Der Browser des Smartboards in der Aula bedient
+    `requestFullscreen()` nicht zuverlässig. Reines Layout kann kein Gerät ablehnen.
+  - **Live-Übertragung** — siehe oben. Diese Einstellung merkt sich das Gerät.
+- **Eigene Beiträge im Griff (Stift-Symbol, nur angemeldet)**
+  - `editor` sieht **seine letzten 3 Einträge** und kann sie korrigieren.
+  - `admin` sieht **alle** Einträge chronologisch, mit Suche und Löschen.
 - **Bild-Komprimierung im Browser** — Fotos werden schon auf dem Gerät auf max. 1600 px
-  verkleinert und als WebP (Fallback JPEG) hochgeladen. Das spart Upload-Zeit im
-  Schul-WLAN und hält den Speicherplatz klein.
-- **Audio-Interviews** — aufgenommene Gespräche mit Ehemaligen lassen sich anhören.
-  Hochladen kann sie ein Admin-Konto.
+  verkleinert und als WebP (Fallback JPEG) hochgeladen.
+- **Anmelde-Schutz** — vor der Anmeldung steht **Cloudflare Turnstile**. Für Menschen ist
+  es meist unsichtbar; Passwörter durchprobieren geht damit nicht.
 
 ---
 
-## 3. Tech-Stack
+## 4. Tech-Stack
 
 | Baustein | Technologie |
 | --- | --- |
@@ -91,267 +127,272 @@ muss gewartet werden, und die Seite bleibt auch bei sehr vielen Zugriffen kosten
 Daraus folgt eine wichtige Eigenschaft: Der **Publishable Key** in `.env` ist **öffentlich**
 und darf das auch sein. Er identifiziert nur das Supabase-Projekt; er berechtigt zu nichts.
 **Sämtliche Rechte erzwingt Supabase serverseitig über Row Level Security (RLS)** — also in
-der Datenbank selbst, wo kein Browser mitreden kann. Ein geheimer Schlüssel
-(`sb_secret_…`) existiert im Repo und im ausgelieferten Bundle nirgends und wird auch
-nicht gebraucht.
+der Datenbank, wo kein Browser mitreden kann. Ein geheimer Schlüssel (`sb_secret_…`)
+existiert im Repo und im ausgelieferten Bündel nirgends und wird auch nicht gebraucht.
+
+Dasselbe gilt für den **Turnstile Site Key**: Er ist der öffentliche Teil des Paares, an
+unsere Domain gebunden und steht als Rückfall fest im Code
+(`src/components/form/Turnstile.tsx`). Eine Umgebungsvariable hat Vorrang, falls die
+Schule ihn einmal tauscht. Der geheime Gegenpart liegt allein bei Supabase.
 
 ---
 
-## 4. Lokale Entwicklung
+## 5. Lokale Entwicklung
 
 ```bash
-npm install     # Abhängigkeiten installieren
-npm run dev     # Entwicklungsserver auf http://localhost:3000
-npm run build   # statischer Export nach out/
+npm install         # Abhängigkeiten installieren
+npm run dev         # Entwicklungsserver auf http://localhost:3000
+npm run build       # statischer Export nach out/
 npm run typecheck   # TypeScript prüfen, ohne zu bauen
 ```
 
-`npm run build` erzeugt den Ordner **`out/`** — genau dieser Ordner wird später von
-Cloudflare Pages ausgeliefert. Man kann ihn auch lokal mit jedem statischen Webserver
-öffnen.
+`npm run build` erzeugt den Ordner **`out/`** — genau dieser Ordner wird von Cloudflare
+Pages ausgeliefert. Man kann ihn auch lokal mit jedem statischen Webserver öffnen.
 
-Die Datei **`.env` ist bewusst committet** und enthält ausschließlich öffentliche Werte
-(Projekt-URL und Publishable Key, siehe oben). Es müssen also keine Geheimnisse verteilt
-werden, um lokal zu entwickeln.
+Die Datei **`.env` ist bewusst committet** und enthält ausschließlich öffentliche Werte.
+Es müssen also keine Geheimnisse verteilt werden, um lokal zu entwickeln.
 
 ---
 
-## 5. Supabase
+## 6. Supabase
 
-Projekt-Ref `cudjqqnnnahswtwswicj`, Region **Frankfurt (eu-central-1)** — alle Daten
-liegen in der EU.
+Projekt-Ref `cudjqqnnnahswtwswicj`, Region **Frankfurt (eu-central-1)** — alle Daten liegen
+in der EU.
 
-Das gesamte Datenbank-Schema liegt versioniert im Repo unter `supabase/migrations/`:
+Das gesamte Schema liegt versioniert unter `supabase/migrations/`:
 
 | Datei | Inhalt |
 | --- | --- |
-| `0001_schema.sql` | Tabelle `entries`, Indizes, Constraints, `sort_date` |
-| `0002_policies.sql` | Row-Level-Security-Policies (wer darf was) |
-| `0003_storage.sql` | Storage-Buckets `entry-images` und `entry-audio` inkl. Limits |
-| `0004_realtime.sql` | Trigger für die Live-Updates (Realtime Broadcast) |
-| `0005_advisor_fixes.sql` | Nacharbeiten aus den Supabase-Advisors (Security/Performance) |
+| `0001`–`0005` | Tabelle `entries`, RLS-Policies, Storage-Eimer, Realtime-Trigger, Advisor-Nacharbeiten |
+| `0006` | Eigene Dateien im Storage wieder löschen dürfen |
+| `0007`–`0010` | Konten nur per SQL, Rollen `admin` / `editor`, erzeugte Passwörter |
+| `0011` | Bildergalerie (`image_paths`) |
+| `0012` | Konten per Name, merkbare Passwörter |
+| `0013` | Stufe „Wichtig" (`is_important`) |
+| `0014` | **Einträge ohne Datum** (`year` darf `null` sein) → Erinnerungs-Wolke |
+| `0015` | **Tabelle `entry_voices`** — mehrere Stimmen je Thema |
+| `0016` | Bilder hochladen dürfen nur Admin-Konten |
+| `0017` | Eintrag-Konten dürfen **eigene** Beiträge korrigieren |
+| `0018` | Audio-Interviews vollständig entfernt (Spalte, Rechte, Abspieler) |
+| `0019` | Eintrags-Grenze je Konto wieder aufgehoben |
+| `0020` | Lücke geschlossen: Beim **Anlegen** darf `editor` kein „Wichtig" setzen |
 
-Zusätzlich gibt es **Beispieldaten** in `supabase/seed.sql`: 16 fiktive, aber realistisch
-klingende Einträge über 1971–2025, damit der Zeitstrahl beim Entwickeln gut aussieht.
-**Das sind keine echten historischen Daten der Schule** — sie müssen vor dem Go-Live weg:
-
-```sql
-delete from public.entries
-where created_by in (
-  select id from auth.users where email like 'dev-%@zeitstrahl-gymnw.de'
-);
-```
+> **`supabase/seed.sql` sind erfundene Beispieldaten für die Entwicklung.** Sie dürfen
+> **nicht** in die Live-Datenbank eingespielt werden. Die echten Meilensteine pflegt die
+> Schule über das Admin-Konto.
 
 ---
 
-## 6. Accounts & Rollen
+## 7. Konten & Rollen
 
 **Konten entstehen ausschließlich per SQL — es gibt keinen anderen Weg.**
 
-Das ist in der Datenbank erzwungen (Migration `0007_accounts_only_via_sql.sql`): Ein
-Wächter auf der Nutzertabelle weist **jedes** Anlegen eines Kontos ab, das nicht aus der
-dafür vorgesehenen Funktion kommt. Damit sind alle Wege dicht — die öffentliche
-Registrierung, Magic Links, Einladungen, OAuth und auch der Knopf „Add user“ im
-Supabase-Dashboard. Selbst wenn im Dashboard versehentlich der Schalter „Allow new users
-to sign up“ aktiviert wird, kann sich niemand ein Konto anlegen.
+Das ist in der Datenbank erzwungen (`0007_accounts_only_via_sql.sql`): Ein Wächter auf der
+Nutzertabelle weist **jedes** Anlegen ab, das nicht aus der dafür vorgesehenen Funktion
+kommt. Damit sind alle Wege dicht — öffentliche Registrierung, Magic Links, Einladungen,
+OAuth und auch der Knopf „Add user" im Supabase-Dashboard.
 
 ### Die zwei Rollen
 
 | Rolle | Darf |
 | --- | --- |
-| `admin` | **alles**: Einträge anlegen, **bearbeiten und löschen**, Meilensteine setzen, Audio-Interviews hochladen |
-| `editor` | **neue Einträge anlegen**, auch als „Wichtig“ markiert — die Rolle für die iPads am Aktionstag |
+| `admin` | **alles**: anlegen, bearbeiten, löschen, Meilensteine setzen, „Wichtig" vergeben, Bilder hochladen, Stimmen bearbeiten und löschen |
+| `editor` | **neue Einträge anlegen** und **eigene Beiträge korrigieren** — die Rolle für die iPads am Aktionstag |
 
 Es kann mehrere Konten jeder Rolle geben. Anonyme Besucher dürfen ausschließlich lesen.
 
 ### Konto anlegen
 
-Supabase-Dashboard → **SQL Editor**. Du gibst nur den **Namen** und die **Rolle** an —
-die Anmelde-Adresse setzt der Server automatisch zusammen:
+Supabase-Dashboard → **SQL Editor**. Du gibst nur **Namen** und **Rolle** an — die
+Anmelde-Adresse setzt der Server zusammen:
 
 ```sql
 select * from private.create_account('Anna Meyer', 'admin');
 select * from private.create_account('iPad 1',     'editor');
-select * from private.create_account('iPad 2',     'editor');
-select * from private.create_account('iPad 3',     'editor');
 ```
 
 Das Ergebnis zeigt Adresse, Rolle und Passwort **ein einziges Mal**:
 
 | konto | rolle | passwort | hinweis |
 | --- | --- | --- | --- |
-| anna.meyer@zeitstrahl-gymnw.de | admin | `Musikraum+Pausenhof46` | Jetzt notieren — das Passwort wird nie wieder angezeigt. |
+| anna.meyer@zeitstrahl-gymnw.de | admin | `Musikraum+Pausenhof46` | Jetzt notieren — wird nie wieder angezeigt. |
 
 Aus „Anna Meyer" wird `anna.meyer@zeitstrahl-gymnw.de`, aus „iPad 1" wird
 `ipad.1@zeitstrahl-gymnw.de`. Umlaute werden ausgeschrieben („Jürgen Groß" →
-`juergen.gross@…`). Mit dieser Adresse meldet man sich auf der Website an.
+`juergen.gross@…`).
 
-Die Passwörter bestehen aus zwei gut lesbaren Wörtern, einem Sonderzeichen und
-Ziffern (`Zeugnis#Bibliothek813`) — man kann sie vorlesen und sich merken, und sie sind
-trotzdem stark. Danach sind sie nur noch verschlüsselt gespeichert und **können nicht
-mehr ausgelesen werden**, auch nicht von der Schulverwaltung. Bitte sofort in den
-Passwortmanager der Schule übernehmen.
+Die Passwörter bestehen aus zwei gut lesbaren Wörtern, einem Sonderzeichen und Ziffern
+(`Zeugnis#Bibliothek813`) — man kann sie vorlesen und sich merken, und sie sind trotzdem
+stark. Danach sind sie nur verschlüsselt gespeichert und **können nicht mehr ausgelesen
+werden**, auch nicht von der Schulverwaltung.
 
 ### Konten verwalten
 
-Alles läuft über den Namen — die Adresse muss man sich nicht merken:
-
 ```sql
--- Übersicht: Name, Adresse, Rolle, letzte Anmeldung
-select * from private.list_accounts();
-
--- Neues Passwort erzeugen (wird wieder einmalig angezeigt)
-select * from private.reset_password('iPad 1');
-
--- Rolle wechseln
-select private.set_account_role('iPad 1', 'admin');
-
--- Konto löschen (die Einträge dieser Person bleiben erhalten)
-select private.delete_account('iPad 3');
+select * from private.list_accounts();              -- Übersicht
+select * from private.reset_password('iPad 1');     -- neues Passwort (einmalig sichtbar)
+select private.set_account_role('iPad 1', 'admin'); -- Rolle wechseln
+select private.delete_account('iPad 3');            -- Konto löschen (Einträge bleiben)
 ```
 
 > **Nach einer Rollen-Änderung** muss sich die betroffene Person **einmal ab- und wieder
 > anmelden**. Die Rolle steckt im signierten Anmelde-Token und wird erst beim nächsten
 > Login neu ausgestellt.
 
-> **Wenn jemand versucht, sich selbst zu registrieren**, antwortet der Server mit einem
-> Fehler und es entsteht kein Konto. Das ist gewollt — die Anmeldeseite ist nur für die
-> Konten der Schule gedacht und bietet gar keine Registrierung an.
-
 ---
 
-## 7. 🚀 Go-Live-Checkliste
+## 8. 🚀 Go-Live-Checkliste
 
-1. **Echte Konten anlegen** — per SQL, siehe Abschnitt 6: mindestens ein `admin`-Konto
-   für die Betreuung und je ein `editor`-Konto pro iPad. Die angezeigten Passwörter sofort
-   in den Passwortmanager der Schule übernehmen — sie lassen sich später nicht mehr
-   auslesen.
-2. **Test-Konten entfernen**, falls noch welche existieren — `select * from private.list_accounts();`
-   zeigt alle an, gelöscht wird per Name:
-   ```sql
-   select private.delete_account('Pruef Admin');
-   ```
-3. **Zusätzlich absichern (empfohlen):** Dashboard → **Authentication → Sign In / Providers**
-   → Schalter **„Allow new users to sign up“ AUS**. Die Datenbanksperre aus Abschnitt 6
-   greift auch ohne diesen Schalter — aber so bekommen Neugierige statt eines Serverfehlers
-   eine saubere Absage, und der Server spart sich die Arbeit.
-4. **Passwort-Mindestlänge auf 12 setzen:** Authentication → **Passwords**.
+1. **Rollen prüfen.** `select * from private.list_accounts();` — Konten, die nur eintragen
+   sollen, gehören auf `editor`. Ein Admin-Konto darf alles löschen; davon sollte es so
+   wenige wie möglich geben.
+2. **Turnstile scharf schalten** — Supabase-Dashboard → **Authentication → Attack
+   Protection** → Captcha aktivieren, Anbieter **Turnstile**, den **Secret Key** aus
+   Cloudflare eintragen. Der Site Key steckt bereits im Code. In Cloudflare muss beim
+   Widget die Domain `zeitstrahl-gymnw.de` eingetragen sein — sonst meldet die
+   Anmeldeseite Fehlercode `110200`.
+3. **Registrierung zusätzlich abschalten** (empfohlen): Authentication → **Sign In /
+   Providers** → „Allow new users to sign up" **AUS**. Die Datenbanksperre greift auch
+   ohne — so bekommen Neugierige aber eine saubere Absage.
+4. **Passwort-Mindestlänge auf 12** setzen: Authentication → **Passwords**.
 5. **Site URL setzen:** Authentication → **URL Configuration** →
    `https://zeitstrahl-gymnw.de`.
-6. **Impressum und Datenschutzerklärung** von der Schule prüfen und vervollständigen
-   lassen. Beide Seiten sind derzeit als **Entwurf** gekennzeichnet und enthalten
-   orange markierte Stellen `[BITTE PRÜFEN]`, die noch geklärt werden müssen
-   (Schulleitung, Schulträger, Aufsichtsbehörde, Verantwortliche(r) nach § 18 MStV,
-   Datenschutzbeauftragte(r), Einwilligungsprozess für Fotos und Audio).
-7. **Optional: Captcha (Cloudflare Turnstile)** gegen automatisierte Login-Versuche —
-   Dashboard → Authentication → **Attack Protection**. Das erfordert eine kleine
-   Code-Ergänzung beim Login (Widget einbinden und `captchaToken` mitschicken); siehe die
-   Supabase-Dokumentation zum Stichwort „Captcha“. Für vier Accounts reichen die
-   eingebauten Rate-Limits in der Regel aus.
+6. **Leeren Audio-Eimer löschen:** Storage → `entry-audio` → *Delete bucket*. Er ist
+   nachweislich leer und seit Migration `0018` ohne jede Policy, also für niemanden mehr
+   beschreibbar. Per SQL lässt er sich nicht entfernen (Supabase schützt die
+   Storage-Tabellen).
+7. **Rechtstexte final freigeben** — Impressum, Datenschutzerklärung und
+   Nutzungsbedingungen stehen im Wortlaut der Schule unter `/impressum/`,
+   `/datenschutz/` und `/nutzungsbedingungen/`.
 
 ---
 
-## 8. Deployment (Cloudflare Pages)
+## 9. Deployment (Cloudflare Pages)
 
 ### Erstes Deployment
 
-1. **Cloudflare-Dashboard** öffnen → **Workers & Pages**
-2. **„Create“** → Reiter **„Pages“** → **„Connect to Git“**
-3. GitHub verbinden und das Repository **`Timeline_GymNW`** auswählen
-4. Branch wählen (der Branch, der veröffentlicht werden soll — üblicherweise der
-   Hauptbranch)
+1. **Cloudflare-Dashboard** → **Workers & Pages**
+2. **„Create"** → Reiter **„Pages"** → **„Connect to Git"**
+3. GitHub verbinden, Repository **`Timeline_GymNW`** auswählen
+4. Branch wählen (üblicherweise der Hauptbranch)
 5. Build-Einstellungen:
    - **Build command:** `npm run build`
    - **Build output directory:** `out`
-6. **Environment Variables** (Werte aus `.env` übernehmen):
-   - `NEXT_PUBLIC_SUPABASE_URL` = `https://cudjqqnnnahswtwswicj.supabase.co`
-   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = der `sb_publishable_…`-Wert aus `.env`
-7. **„Save and Deploy“** — nach ein bis zwei Minuten ist die Seite unter einer
-   `*.pages.dev`-Adresse erreichbar. Jeder Push auf den gewählten Branch löst
-   automatisch ein neues Deployment aus.
+6. **Environment Variables** (Werte aus `.env`):
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` *(optional — steht als Rückfall im Code)*
+7. **„Save and Deploy"** — nach ein bis zwei Minuten läuft die Seite unter einer
+   `*.pages.dev`-Adresse. Jeder Push auf den gewählten Branch baut neu.
+
+> **Erfahrung aus dem Betrieb:** Umgebungsvariablen kamen beim Bauen schon einmal nicht an,
+> und der Turnstile-Schlüssel fehlte im ausgelieferten Bündel — sichtbar nur daran, dass
+> auf der Anmeldeseite „Sicherheitsprüfung konnte nicht geladen werden" stand. Deshalb
+> steht der Site Key zusätzlich fest im Code. Wer eine Variable ändert: Danach immer
+> **neu deployen** und die Live-Seite prüfen, nicht nur die Einstellung speichern.
 
 ### Eigene Domain
 
-Pages-Projekt → **Custom domains** → **„Set up a domain“** → `zeitstrahl-gymnw.de`
-hinzufügen. Da die Domain bereits bei Cloudflare liegt, werden die DNS-Einträge
-**automatisch** gesetzt und das TLS-Zertifikat automatisch ausgestellt — es ist nichts
-manuell einzutragen.
-
-Optional lässt sich zusätzlich `www.zeitstrahl-gymnw.de` hinzufügen und per
-Weiterleitungsregel (Rules → Redirect Rules) auf die Hauptdomain umleiten, damit die Seite
-nur unter einer Adresse erreichbar ist.
+Pages-Projekt → **Custom domains** → **„Set up a domain"** → `zeitstrahl-gymnw.de`. Da die
+Domain bei Cloudflare liegt, werden DNS-Einträge und TLS-Zertifikat automatisch gesetzt.
 
 ### Security-Header
 
-Die Sicherheits-Header liegen in **`public/_headers`**. Die Datei landet beim Build
-unverändert in `out/` und wird von Cloudflare Pages **automatisch** auf alle Seiten
-angewendet — es ist keine weitere Konfiguration nötig.
+Die Header liegen in **`public/_headers`**, landen beim Build unverändert in `out/` und
+werden von Cloudflare Pages automatisch angewendet.
 
-Kurz übersetzt, was die **Content-Security-Policy** erlaubt: Skripte, Styles und
-Schriftarten dürfen **ausschließlich von der eigenen Domain** kommen; Bilder, Medien und
-Datenverbindungen zusätzlich vom Supabase-Projekt (inklusive der WebSocket-Verbindung
-`wss://…` für die Live-Updates). Alles andere — fremde Skripte, Werbenetzwerke,
-Tracking-Pixel — wird vom Browser blockiert. Ergänzend gilt: Die Seite **darf nicht in
-einen iframe eingebettet** werden (`frame-ancestors 'none'` + `X-Frame-Options: DENY`,
-Schutz vor Clickjacking), der Browser rät keine Dateitypen (`nosniff`), beim Wechsel auf
-fremde Seiten wird nur die Domain als Referrer übermittelt, und Kamera, Mikrofon,
-Standort und Zahlungs-APIs sind komplett abgeschaltet.
+Kurz übersetzt, was die **Content-Security-Policy** erlaubt: Skripte, Styles und Schriften
+**nur von der eigenen Domain**, dazu Cloudflare Turnstile für die Anmeldung; Bilder, Medien
+und Datenverbindungen zusätzlich vom Supabase-Projekt (inklusive `wss://…` für die
+Live-Updates). Alles andere — fremde Skripte, Werbenetzwerke, Tracking-Pixel — blockiert der
+Browser. Ergänzend: Die Seite darf **nicht in einen iframe** eingebettet werden
+(`frame-ancestors 'none'` + `X-Frame-Options: DENY`), der Browser rät keine Dateitypen
+(`nosniff`), beim Wechsel auf fremde Seiten wird nur die Domain als Referrer übermittelt,
+und Kamera, Mikrofon, Standort und Zahlungs-APIs sind abgeschaltet.
 
 ---
 
-## 9. Free-Tier-Grenzen & Betrieb
-
-Der Betrieb ist auf den kostenlosen Tarifen ausgelegt:
+## 10. Free-Tier-Grenzen & Betrieb
 
 **Cloudflare Pages (Free)**
 - Statische Auslieferung: **unbegrenzt** viele Aufrufe und Bandbreite
-- **500 Builds pro Monat** (also 500 Pushes/Deployments — für dieses Projekt reichlich)
+- **500 Builds pro Monat**
 
 **Supabase (Free)**
-- **500 MB** Datenbank
-- **1 GB** Speicher (Storage) für Bilder und Audio
-- **5 GB** Traffic pro Monat
-- Realtime: max. **200 gleichzeitige Verbindungen** und **2 Mio. Nachrichten/Monat**
+- **500 MB** Datenbank · **1 GB** Storage · **5 GB** Traffic pro Monat
+- Realtime: max. **200 gleichzeitige Verbindungen**, **2 Mio. Nachrichten/Monat**
 
-Was passiert bei Überschreitung? Die Seite **funktioniert weiter** — sie ist ja statisch.
-Lediglich die Live-Updates können pausieren; ein Neuladen der Seite zeigt dann trotzdem
-alle Einträge. Für den Aktionstag heißt das: Selbst im schlimmsten Fall geht nichts
-verloren, es fehlt höchstens der „Wow“-Effekt des automatischen Erscheinens.
+Was passiert bei Überschreitung? Die Seite **funktioniert weiter** — sie ist statisch.
+Lediglich die Live-Updates können pausieren; ein Neuladen zeigt trotzdem alle Einträge.
+Für den Aktionstag heißt das: Selbst im schlimmsten Fall geht nichts verloren, es fehlt
+höchstens der Effekt des automatischen Erscheinens.
 
-Damit der Speicher lange reicht, werden **Bilder schon im Browser komprimiert** — typisch
-landen sie bei **0,2–0,4 MB** pro Foto. Bei 1 GB Storage sind das grob 2.500 bis 5.000
-Bilder. Audio-Interviews sind deutlich größer (max. 25 MB pro Datei); hier lohnt es sich,
-sparsam zu sein.
+Damit der Speicher reicht, werden **Bilder schon im Browser komprimiert** — typisch
+**0,2–0,4 MB** pro Foto, bei 1 GB also grob 2.500 bis 5.000 Bilder.
 
 ---
 
-## 10. Sicherheitsarchitektur
+## 11. Sicherheitsarchitektur
 
-Wer darf was?
-
-| Aktion | anonyme Besucher | Eintrag-Konto (`editor`) | Admin (`admin`) |
+| Aktion | anonym | `editor` | `admin` |
 | --- | :---: | :---: | :---: |
-| Einträge lesen | ✓ | ✓ | ✓ |
+| Einträge und Stimmen lesen | ✓ | ✓ | ✓ |
 | Eintrag erstellen | ✗ | ✓ | ✓ |
-| Eintrag bearbeiten | ✗ | ✗ | ✓ |
+| **eigenen** Eintrag korrigieren | ✗ | ✓ | ✓ |
+| **fremden** Eintrag bearbeiten | ✗ | ✗ | ✓ |
 | Eintrag löschen | ✗ | ✗ | ✓ |
-| Eintrag als „Wichtig“ markieren | ✗ | ✓ | ✓ |
+| Als „Wichtig" markieren | ✗ | ✗ | ✓ |
 | Meilenstein anlegen | ✗ | ✗ | ✓ |
-| Audio-Interview hochladen | ✗ | ✗ | ✓ |
-| **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |
+| Bild hochladen | ✗ | ✗ | ✓ |
+| Stimme zu einem Thema abgeben | ✗ | ✓ | ✓ |
+| Stimme ändern oder löschen | ✗ | ✗ | ✓ |
+| **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL) |
 
-Diese Matrix ist **nicht** bloß eine Frage der Benutzeroberfläche, sondern wird in der
-Datenbank erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT)
-unter `app_metadata` und kann vom Browser aus nicht verändert werden — jede Anfrage wird
-serverseitig gegen die RLS-Policies geprüft. Ebenso erzwingt der Storage-Bucket die Limits
-für Dateigröße und Dateityp serverseitig (Bilder max. 2 MB und nur WebP/JPEG, Audio max.
-25 MB und nur gängige Audioformate), sodass auch manipulierte Uploads abgewiesen werden.
+Diese Matrix ist **nicht** eine Frage der Benutzeroberfläche, sondern wird in der Datenbank
+erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT) unter
+`app_metadata` und kann vom Browser aus nicht verändert werden. Jede Anfrage wird gegen die
+RLS-Policies geprüft. Ebenso erzwingt der Storage-Eimer Dateigröße und -typ serverseitig
+(max. 2 MB, nur WebP/JPEG).
+
+### Bewusste Entscheidung: keine Eintrags-Grenze
+
+Es gab einmal einen Zähler in der Datenbank (max. 10 Einträge je Minute und Konto). Er ist
+seit Migration `0019` **weg** — er hätte am Aktionstag als Erstes das Projektteam getroffen,
+das Zettel für Zettel abtippt, und einem Angreifer nur ein paar Minuten gekostet. Geschützt
+wird stattdessen dort, wo es zählt: Konten gibt es nur per SQL, vor der Anmeldung steht
+Turnstile, und was doch danebengeht, räumt die Verwaltung über das Stift-Menü in einer
+Minute weg.
+
+### Bekannter offener Punkt
+
+Der Supabase-Advisor meldet **„Leaked Password Protection disabled"**. Dieser Abgleich
+gegen bekannte geleakte Passwörter ist ein kostenpflichtiges Feature. Da die Passwörter
+vom Server erzeugt und nicht selbst gewählt werden, ist das Risiko gering — der Hinweis
+ist bewusst akzeptiert.
+
+---
+
+## 12. Geprüft vor der Freigabe
+
+Stand 20. August 2026:
+
+- **`npm run build`** — statischer Export ohne Fehler; **`npm run typecheck`** sauber.
+- **38 von 38 Browser-Prüfungen** bestanden, auf Desktop (1920 px) und Handy (390 px):
+  Begrüßung, Zeitstrahl, Erinnerungs-Wolke, Eintrags-Fenster, alle vier Unterseiten,
+  kein Querscrollen, keine JavaScript-Fehler.
+- **13 Rechte-Prüfungen** direkt in der Datenbank (jeweils in einer zurückgerollten
+  Transaktion): anonym darf nichts schreiben; `editor` darf keinen Meilenstein, kein
+  „Wichtig", kein Bild und kein fremdes `created_by` setzen, nichts Fremdes löschen —
+  `admin` darf all das.
+  Dabei wurde die Lücke gefunden und geschlossen, die zu Migration `0020` führte.
+- **Kein geheimer Schlüssel** im ausgelieferten Bündel (`out/`) — geprüft auf
+  `sb_secret_…` und JWT-Muster.
 
 ---
 
 ## Weiterführend
 
-- **`PLAN.md`** — der vollständige Projektplan: Architekturentscheidungen, Datenmodell,
-  RLS-Policies, Realtime-Konzept und Verifikationsschritte.
+- **`PLAN.md`** — der ursprüngliche Projektplan: Architekturentscheidungen, Datenmodell,
+  RLS-Konzept, Realtime-Konzept.
 - **`supabase/migrations/`** — das komplette Datenbankschema, versioniert und
-  nachvollziehbar.
+  nachvollziehbar. Jede Datei erklärt im Kopf, **warum** sie existiert.

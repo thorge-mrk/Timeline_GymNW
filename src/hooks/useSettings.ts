@@ -19,7 +19,13 @@ export interface Settings {
    * will. Alle anderen bekommen eine Seite, die stillhält.
    */
   realtime: boolean;
-  /** Vollbild: Fußzeile aus, Zeitstrahl bekommt die volle Höhe. */
+  /**
+   * Mehr Platz: Fußzeile weg, der Inhalt bekommt ihre Höhe.
+   *
+   * Heißt im Code weiter `fullscreen`, macht aber kein Geräte-Vollbild mehr —
+   * das hat der Browser des Smartboards in der Aula nicht sauber bedient.
+   * Übrig ist reines Layout, und das kann kein Gerät ablehnen.
+   */
   fullscreen: boolean;
 }
 
@@ -42,9 +48,15 @@ function read(): Settings {
         typeof parsed.realtime === "boolean"
           ? parsed.realtime
           : DEFAULT_SETTINGS.realtime,
-      // Vollbild wird bewusst NICHT wiederhergestellt: Der Browser lässt
-      // Vollbild nur nach einer Nutzergeste zu — ein gespeichertes „an“ wäre
-      // beim nächsten Laden eine Lüge.
+      /*
+       * „Mehr Platz“ überlebt das Neuladen bewusst NICHT.
+       *
+       * In der Fußzeile stehen Impressum, Datenschutz und
+       * Nutzungsbedingungen. Eine gespeicherte Einstellung würde diese Links
+       * auf dem Gerät dauerhaft entfernen — für eine Schulseite ist das der
+       * falsche Standard. Jeder frische Aufruf beginnt deshalb mit
+       * sichtbarer Fußzeile; wer den Platz braucht, schaltet einmal um.
+       */
       fullscreen: false,
     };
   } catch {
