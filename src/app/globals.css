@@ -223,3 +223,14 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Der Zeitstrahl füllt den Bildschirm und wird in sich geschoben, statt die
+ * Seite zu verlängern — sonst könnte man ihn nicht als Tafel benutzen. Die
+ * Startseite setzt dafür `data-view="zeitstrahl"` am Body; alle anderen Seiten
+ * scrollen ganz gewöhnlich.
+ */
+body[data-view="zeitstrahl"] main {
+  min-height: 0;
+  overflow-y: auto;
+}

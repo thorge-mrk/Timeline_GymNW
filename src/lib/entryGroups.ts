@@ -65,9 +65,28 @@ export function indexVoices(voices: Voice[]): VoiceIndex {
 }
 
 /**
- * Wie viele Menschen stecken in diesem Thema? Der Eintrag selbst ist die erste
- * Stimme, jede Ergänzung eine weitere — deshalb `+ 1`.
+ * Wie viele MENSCHEN stecken in diesem Thema?
+ *
+ * Das ist nicht dasselbe wie „Stimmen plus eins". Manche Themen sind aus
+ * mehreren Zetteln zusammengefasst — „Pausen" etwa. Der Eintrag ist dort nur
+ * die Überschrift, hinter der die einzelnen Erinnerungen hängen; er selbst
+ * gehört niemandem. Ihn mitzuzählen hätte aus vier Menschen fünf gemacht.
+ *
+ * Der Eintrag zählt deshalb nur mit, wenn jemand ihn unterschrieben hat —
+ * dann ist er die Erinnerung dieser Person. Und mindestens einer ist es
+ * immer: Auch ein namenloser Beitrag kam von jemandem.
  */
-export function totalVoices(index: VoiceIndex, entryId: string): number {
-  return index.count(entryId) + 1;
+export function totalVoices(
+  index: VoiceIndex,
+  entry: Pick<Entry, "id" | "author_name">
+): number {
+  return peopleFor(entry, index.count(entry.id));
+}
+
+/** Dieselbe Regel, wenn die Zahl der Ergänzungen schon bekannt ist. */
+export function peopleFor(
+  entry: Pick<Entry, "author_name">,
+  voices: number
+): number {
+  return Math.max(1, voices + (entry.author_name ? 1 : 0));
 }

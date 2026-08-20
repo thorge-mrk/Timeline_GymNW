@@ -1,12 +1,13 @@
 import Link from "next/link";
+import EntriesMenu from "@/components/EntriesMenu";
 import SchoolMark from "@/components/SchoolMark";
 import SettingsMenu from "@/components/SettingsMenu";
 import "./site.css";
 
 /**
  * Kopfzeile der Seite. Bleibt bewusst eine Server-Komponente — sie kennt keinen
- * Zustand. Nur das Einstellungsmenü daneben läuft im Browser und wandert als
- * einziges Stück dieser Zeile ins Client-Bündel.
+ * Zustand. Nur die beiden Menüs daneben laufen im Browser und wandern als
+ * einzige Stücke dieser Zeile ins Client-Bündel.
  *
  * Auch im Vollbildmodus bleibt diese Zeile stehen: der Weg zurück (Zahnrad,
  * Startseite, Eintragen) darf nie verschwinden.
@@ -38,6 +39,10 @@ export default function SiteHeader() {
           <Link href="/eintragen/" className="btn-accent min-h-11">
             Eintragen
           </Link>
+          {/* Der Stift führt zu den eigenen (bzw. allen) Beiträgen. Er zeigt
+              sich nur angemeldeten Konten mit Schreibrecht und entscheidet das
+              selbst — deshalb steht hier keine Bedingung. */}
+          <EntriesMenu />
           <SettingsMenu />
         </nav>
       </div>

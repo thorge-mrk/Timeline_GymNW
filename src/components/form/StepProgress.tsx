@@ -5,8 +5,11 @@
  *
  * Zwei Dinge muss man am Aktionstag auf einen Blick sehen: wo man gerade ist
  * und wie viel noch kommt. Deshalb eine Zahl in Worten („Schritt 2 von 5“),
- * eine ruhige Leiste und fünf antippbare Punkte — 44 px, damit auch ein Daumen
- * auf dem Schul-iPad trifft.
+ * eine ruhige Leiste und fünf antippbare Punkte.
+ *
+ * Tippfläche und Zeichnung sind dabei bewusst zwei verschiedene Maße: Der
+ * Knopf ist 44 px groß (Daumenmaß auf dem Schul-iPad), der sichtbare Kreis
+ * darin nur 32 px. So bleibt die Reihe leicht und trifft trotzdem jeder.
  *
  * Die Leiste wächst über `transform: scaleX()` statt über die Breite: So
  * bewegt der Browser nur Pixel und rechnet kein Layout neu.
@@ -58,7 +61,7 @@ export function StepProgress({
   return (
     <div className="border-b border-paper-line pb-5">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+        <p className="text-[11px] font-bold tracking-[0.14em] text-coal-faint uppercase">
           <span className="tabular-nums">
             Schritt {current + 1} von {total}
           </span>
@@ -73,7 +76,9 @@ export function StepProgress({
         <span className="step-bar__fill" style={{ transform: `scaleX(${filled})` }} />
       </div>
 
-      <div className="mt-3.5 flex items-center gap-2">
+      {/* −0,5 rem außen: Die Kreise stehen damit bündig zur Leiste darüber,
+          obwohl ihre Tippflächen rechts und links überstehen. */}
+      <div className="-mx-1.5 mt-2 flex items-center">
         {steps.map((step, index) => {
           const done = index < current;
           const here = index === current;
@@ -90,7 +95,9 @@ export function StepProgress({
               aria-label={`Schritt ${index + 1} von ${total}: ${step.title}`}
               onClick={() => onGo(index)}
             >
-              {done ? <CheckIcon /> : <span aria-hidden>{index + 1}</span>}
+              <span aria-hidden className="step-dot__mark">
+                {done ? <CheckIcon /> : index + 1}
+              </span>
             </button>
           );
         })}

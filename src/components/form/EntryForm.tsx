@@ -13,10 +13,10 @@ import {
 } from "@/lib/categories";
 import { formatSmartDate, parseSmartDate } from "@/lib/dates";
 import { richTextToPlain } from "@/lib/richText";
+import { normalizeForMatch } from "@/lib/similarity";
 import { publicUrl, supabase } from "@/lib/supabase";
-import type { Entry, EntryInsert } from "@/lib/types";
+import type { Entry, EntryInsert, VoiceInsert } from "@/lib/types";
 import { ConsentNote } from "./ConsentNote";
-import { DateChoice, type DateMode } from "./DateChoice";
 import { GalleryUpload } from "./GalleryUpload";
 import { ImageUpload } from "./ImageUpload";
 import { KindChoice, type EntryKind } from "./KindChoice";
@@ -31,10 +31,11 @@ import {
 } from "./imageItems";
 import { RankChoice, milestoneOf } from "./RankChoice";
 import { RichTextInput } from "./RichTextInput";
+import { SmartDateInput } from "./SmartDateInput";
 import { SimilarPanel } from "./SimilarPanel";
 import { StepProgress, type StepDef } from "./StepProgress";
 import { SuccessCard } from "./SuccessCard";
-import { VoiceForm } from "./VoiceForm";
+import { FALLBACK_BODY, VoiceForm } from "./VoiceForm";
 
 /*
  * Tonaufnahmen kann über dieses Formular niemand mehr hochladen — die Schule
@@ -56,6 +57,13 @@ const AUTHOR_MAX = 80;
  * knapp genug, dass man auf den Punkt kommt, und lang genug für den Punkt.
  */
 const MOMENT_TEXT_MAX = 200;
+
+/**
+ * Wie viele bestehende Titel beim Absenden auf Namensgleichheit geprüft
+ * werden. Der Bestand liegt bei knapp 60 Zeilen und wächst langsam; 1000 ist
+ * genug für Jahre und bleibt eine einzige, schlanke Abfrage.
+ */
+const TWIN_SCAN_LIMIT = 1000;
 
 const DATE_INPUT_ID = "entry-date";
 const DEFAULT_CATEGORY: CategoryId = "schueler";
@@ -138,7 +146,7 @@ function stepsFor(
   const wann: FormStep = {
     key: "wann",
     title: "Wann war das?",
-    lead: "Das Jahr reicht. Und wenn du es nicht mehr weißt, ist das auch gut.",
+    lead: "Das Jahr reicht schon. Wenn du es nicht mehr weißt, lass das Feld einfach leer.",
   };
   const medien: FormStep = {
     key: "medien",
@@ -437,13 +445,6 @@ export function EntryForm({
 
   const [title, setTitle] = useState(entry?.title ?? "");
   const [dateText, setDateText] = useState(entry ? entryDateText(entry) : "");
-  /**
-   * „Ich weiß es“ oder „weiß ich nicht mehr“ — zwei gleichwertige Antworten.
-   * Beim Bearbeiten richtet sich die Vorauswahl danach, was gespeichert ist.
-   */
-  const [dateMode, setDateMode] = useState<DateMode>(
-    entry && entry.year == null ? "unknown" : "known"
-  );
   const [category, setCategory] = useState<CategoryId>(
     entry ? categoryById(entry.category).id : DEFAULT_CATEGORY
   );
@@ -487,6 +488,11 @@ export function EntryForm({
   );
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<"created" | "updated" | null>(null);
+  /**
+   * Der Titel des Themas, an das die Erinnerung angehängt wurde, statt ein
+   * zweites Thema gleichen Namens anzulegen. `null` heißt: eigener Eintrag.
+   */
+  const [mergedInto, setMergedInto] = useState<string | null>(null);
 
   /** Der offene Schritt. Im Bearbeiten-Modus ohne Wirkung — dort steht alles offen. */
   const [step, setStep] = useState(0);
@@ -555,11 +561,14 @@ export function EntryForm({
   const allImages = useMemo(() => [cover, ...gallery], [cover, gallery]);
   useObjectUrlCleanup(allImages);
 
-  /** Das gelesene Datum — `null` heißt „ohne Datum“, nicht „ungültig“. */
-  const smartDate = useMemo(
-    () => (dateMode === "known" ? parseSmartDate(dateText) : null),
-    [dateMode, dateText]
-  );
+  /**
+   * Das gelesene Datum. `null` heißt „kein Datum“ — und das ist seit dem
+   * Umbau des Schritts der ganz normale zweite Fall: Wer das Feld leer lässt,
+   * bekommt einen Eintrag ohne Jahreszahl, der in der Erinnerungs-Wolke
+   * landet. Ein Monat ohne Jahr kann dabei nie entstehen: parseSmartDate gibt
+   * entweder ein vollständiges Datum zurück oder gar keins.
+   */
+  const smartDate = useMemo(() => parseSmartDate(dateText), [dateText]);
 
   /** Titelbild neu wählen — ersetzt das bisherige. */
   function pickCover(prepared: PreparedImage) {
@@ -627,11 +636,16 @@ export function EntryForm({
         focusId: "entry-title",
       };
     }
-    if (key === "wann" && dateMode === "known" && parseSmartDate(dateText) === null) {
+    /*
+     * Ein leeres Datumsfeld ist KEIN Mangel — die Schule wollte die Rückfrage
+     * „weißt du es?“ loswerden. Beanstandet wird nur, was dasteht und sich
+     * nicht lesen lässt: Sonst verschwände „irgendwann 96“ beim Speichern
+     * kommentarlos.
+     */
+    if (key === "wann" && dateText.trim() && parseSmartDate(dateText) === null) {
       return {
-        message: dateText.trim()
-          ? "Dieses Datum verstehe ich noch nicht — z. B. 1996, 3.1996 oder 12.3.1996. Sonst gern „Weiß ich nicht mehr“."
-          : "Bitte ein Datum eintragen — oder „Weiß ich nicht mehr“ wählen. Beides ist gleich richtig.",
+        message:
+          "Dieses Datum verstehe ich noch nicht — z. B. 1996, 3.1996 oder 12.3.1996. Du darfst das Feld auch leer lassen.",
         focusId: DATE_INPUT_ID,
       };
     }
@@ -692,7 +706,10 @@ export function EntryForm({
     setVisited(new Set([0]));
     setCheckStep(null);
     if (next === "moment") {
-      setDateMode("known");
+      // Im Moment-Weg wird nach der Kategorie nicht gefragt (siehe unten) —
+      // dann darf auch keine hängenbleiben, die vorher im Ereignis-Weg
+      // angeklickt wurde.
+      setCategory(DEFAULT_CATEGORY);
       setDateText("");
       setCover(null);
       setGallery([]);
@@ -781,6 +798,7 @@ export function EntryForm({
     setCheckStep(null);
     setError(null);
     setSaved(null);
+    setMergedInto(null);
     setStep(0);
     setDir("back");
     setVisited(new Set([0]));
@@ -819,6 +837,62 @@ export function EntryForm({
     const uploaded: { bucket: string; path: string }[] = [];
 
     try {
+      /*
+       * Gleiches Thema? Dann keine zweite Wolke daneben.
+       *
+       * Heute früh ist genau das passiert: Jemand hat „Bläserklasse“ neu
+       * angelegt, obwohl es den Eintrag längst gab — seitdem steht er zweimal
+       * da. Der Vorschlag „Gibt es das schon?“ hilft nur denen, die ihn
+       * anklicken; wer schnell tippt und absendet, sieht ihn gar nicht.
+       *
+       * Deshalb prüft das Formular beim Absenden selbst, und zwar streng:
+       * NUR bei echter Namensgleichheit nach `normalizeForMatch` — „Pausen“,
+       * „pausen“ und „Pausen!“ sind dasselbe Thema. Alles, was bloß ÄHNLICH
+       * ist („Bläserklase“), bleibt beim Vorschlag zum Anklicken: Zwei
+       * Erinnerungen zusammenzuwerfen, weil sie sich ähneln, wäre eine
+       * Anmaßung gegenüber dem, was jemand geschrieben hat.
+       *
+       * Nur im Moment-Weg. Beim Ereignis gehört ein Datum dazu, und zwei
+       * Sommerkonzerte in verschiedenen Jahren sind zwei Ereignisse.
+       */
+      if (isMoment) {
+        setPhase("saving");
+        const needle = normalizeForMatch(cleanTitle);
+        const { data: known, error: scanErr } = await supabase
+          .from("entries")
+          .select("id,title")
+          .limit(TWIN_SCAN_LIMIT);
+        if (scanErr) throw new FriendlyError(describeDbError(scanErr.message));
+
+        const twin = (known ?? []).find(
+          (row) => normalizeForMatch(row.title) === needle
+        );
+        if (twin) {
+          // `body` ist NOT NULL: Wer nur ein Wort dagelassen hat, hinterlässt
+          // trotzdem einen lesbaren Satz — denselben wie beim Ergänzen.
+          const voice: VoiceInsert = {
+            entry_id: twin.id,
+            body: momentText.trim() || FALLBACK_BODY,
+            author_name: authorName.trim() || null,
+            class_name: showClassField
+              ? normalizeClassName(className.trim()) || null
+              : null,
+            created_by: session.user.id,
+          };
+          const { error: voiceErr } = await supabase
+            .from("entry_voices")
+            .insert(voice);
+          if (voiceErr) throw new FriendlyError(describeDbError(voiceErr.message));
+
+          onSaved?.("created");
+          setMergedInto(twin.title);
+          setPhase("idle");
+          setSaved("created");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+      }
+
       // Erst alle neuen Bilder hochladen — Titelbild zuerst, dann die Galerie
       // in ihrer Reihenfolge. Schon gespeicherte Bilder bleiben, wo sie sind.
       const fresh = [cover, ...gallery].filter(
@@ -1010,7 +1084,9 @@ export function EntryForm({
         title="Gespeichert!"
         text={
           saved === "created"
-            ? isMoment
+            ? mergedInto
+              ? `Dieses Thema gab es schon: Deine Erinnerung steht jetzt bei „${mergedInto}“ — dort, wo sie mit den anderen zusammen zu lesen ist. Danke fürs Erinnern.`
+              : isMoment
               ? "Dein Moment ist jetzt live — er steht in der Erinnerungs-Wolke. Danke fürs Erinnern."
               : smartDate
                 ? "Der Eintrag ist jetzt live auf dem Zeitstrahl — danke fürs Erinnern."
@@ -1099,9 +1175,13 @@ export function EntryForm({
                   <span aria-hidden className="font-bold text-fox-deep">*</span>
                   <span className="sr-only">(Pflichtfeld)</span>
                 </label>
-                <span aria-hidden className="hint tabular-nums">
-                  noch {TITLE_MAX - title.length}
-                </span>
+                {/* Ein Zähler, der bei „noch 120“ startet, zählt vor allem
+                    Aufmerksamkeit weg. Er meldet sich erst, wenn es eng wird. */}
+                {TITLE_MAX - title.length <= 30 && (
+                  <span aria-hidden className="hint animate-fade-up tabular-nums">
+                    noch {TITLE_MAX - title.length}
+                  </span>
+                )}
               </div>
               {/* Der Platzhalter ist eine echte Antwort, keine Bedienanleitung:
                   „Pausen mit Freunden“ erklärt in zwei Sekunden mehr über die
@@ -1159,9 +1239,15 @@ export function EntryForm({
                   <label className="label" htmlFor="entry-moment-text">
                     Magst du einen Satz dazu schreiben?
                   </label>
-                  <span aria-hidden className="hint tabular-nums">
-                    noch {momentLeft} Zeichen
-                  </span>
+                  {momentLeft <= 60 ? (
+                    <span aria-hidden className="hint animate-fade-up tabular-nums">
+                      noch {momentLeft} Zeichen
+                    </span>
+                  ) : (
+                    <span aria-hidden className="hint">
+                      freiwillig
+                    </span>
+                  )}
                 </div>
                 <textarea
                   id="entry-moment-text"
@@ -1173,7 +1259,9 @@ export function EntryForm({
                   disabled={busy}
                   onChange={(e) => setMomentText(e.target.value)}
                 />
-                <p className="hint mt-1.5">Freiwillig — du kannst es leer lassen.</p>
+                <p className="hint mt-1.5">
+                  Ein Satz genügt — du kannst das Feld auch leer lassen.
+                </p>
               </div>
             )}
           </>
@@ -1208,9 +1296,14 @@ export function EntryForm({
                 />
               ) : (
                 <div>
-                  <label className="label" htmlFor="entry-description">
-                    {wizard ? "Was ist passiert?" : "Dein Text"}
-                  </label>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <label className="label" htmlFor="entry-description">
+                      {wizard ? "Was ist passiert?" : "Dein Text"}
+                    </label>
+                    <span aria-hidden className="hint">
+                      freiwillig
+                    </span>
+                  </div>
                   <textarea
                     id="entry-description"
                     rows={5}
@@ -1221,9 +1314,7 @@ export function EntryForm({
                     disabled={busy}
                     onChange={(e) => setDescription(e.target.value)}
                   />
-                  <p className="hint mt-1.5">
-                    Freiwillig — zwei, drei Sätze reichen völlig.
-                  </p>
+                  <p className="hint mt-1.5">Zwei, drei Sätze reichen völlig.</p>
                 </div>
               ))}
 
@@ -1233,6 +1324,18 @@ export function EntryForm({
               stand die Kategorie beim Titel — dort war sie eine Sortieraufgabe
               mitten im Erzählen.
             */}
+            {/*
+              Die Kategorie fragt der Moment-Weg NICHT.
+
+              Die Schule wollte es ausdrücklich so: „wenn man auf Wortwolke
+              Eintrag klickt, soll man einfach auch nur Titel angeben können
+              ohne Name usw.“ Die Spalte ist in der Datenbank Pflicht — also
+              steht still der Standard darin (Schüler), statt eine Frage zu
+              stellen, deren Antwort ohnehin fast immer dieselbe ist. Im
+              Ereignis-Weg bleibt die Wahl: Dort sortiert sie den Punkt auf der
+              Achse ein, und dort steht sie auch in der Farbe des Markers.
+            */}
+            {!isMoment && (
             <div>
               <span className="label" id="entry-category-label">
                 {isAdmin ? "Kategorie" : "Wer erzählt das?"}{" "}
@@ -1291,12 +1394,18 @@ export function EntryForm({
                 {categoryById(category).description}
               </p>
             </div>
+            )}
 
             {/* 6 — Der Name. Freiwillig, und das steht auch so da. */}
             <div>
-              <label className="label" htmlFor="entry-author">
-                Wie heißt du?
-              </label>
+              <div className="flex items-baseline justify-between gap-3">
+                <label className="label" htmlFor="entry-author">
+                  Wie heißt du?
+                </label>
+                <span aria-hidden className="hint">
+                  freiwillig
+                </span>
+              </div>
               <input
                 id="entry-author"
                 type="text"
@@ -1309,16 +1418,21 @@ export function EntryForm({
                 onChange={(e) => setAuthorName(e.target.value)}
               />
               <p className="hint mt-1.5">
-                Freiwillig — der Name steht später an deiner Erinnerung.
+                Der Name steht später an deiner Erinnerung.
               </p>
             </div>
 
             {/* 7 — Klasse: nur da, wo sie überhaupt eine Antwort hat. */}
             {showClassField && (
               <div className="animate-fade-up">
-                <label className="label" htmlFor="entry-class">
-                  Deine Klasse
-                </label>
+                <div className="flex items-baseline justify-between gap-3">
+                  <label className="label" htmlFor="entry-class">
+                    Deine Klasse
+                  </label>
+                  <span aria-hidden className="hint">
+                    freiwillig
+                  </span>
+                </div>
                 <input
                   id="entry-class"
                   type="text"
@@ -1330,7 +1444,7 @@ export function EntryForm({
                   onChange={(e) => setClassName(e.target.value)}
                 />
                 <p className="hint mt-1.5">
-                  Freiwillig — damit lässt sich später nach Jahrgängen suchen.
+                  Damit lässt sich später nach Jahrgängen suchen.
                 </p>
               </div>
             )}
@@ -1338,15 +1452,19 @@ export function EntryForm({
         );
 
       case "wann":
+        /*
+         * Nur noch das Feld — die frühere Wahl zwischen „Ich weiß ungefähr,
+         * wann das war“ und „Weiß ich nicht mehr“ ist weg. Sie war eine Frage
+         * vor der Frage: Man musste erst erklären, ob man antworten kann, und
+         * durfte dann antworten. Wer nichts einträgt, hat eben kein Datum —
+         * das steht jetzt ruhig unter dem Feld, statt als eigene Karte davor.
+         */
         return (
-          <DateChoice
-            mode={dateMode}
-            onModeChange={setDateMode}
+          <SmartDateInput
+            id={DATE_INPUT_ID}
             value={dateText}
             onChange={setDateText}
-            inputId={DATE_INPUT_ID}
             disabled={busy}
-            showRequiredError={checkKey === "wann"}
           />
         );
 
@@ -1402,7 +1520,7 @@ export function EntryForm({
               dem Handy aber über zwei Bildschirme strecken — und man denkt
               ohnehin in Schritten, nicht in Feldern.
             */}
-            <div className="rounded-xl border border-paper-line bg-paper-sunk px-4 py-1">
+            <div className="rounded-2xl border border-paper-line bg-paper-sunk px-4 py-1.5">
               <SummaryRow
                 label={isMoment ? "Dein Moment" : "Worum es geht"}
                 value={title.trim() || "Ohne Titel"}
@@ -1433,12 +1551,16 @@ export function EntryForm({
                     {/* Kategorie, Name und Klasse stehen hier schon so, wie sie
                         gespeichert werden — sie gehören zum selben Schritt. */}
                     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 font-normal text-coal-soft">
-                      <span
-                        className="chip cursor-default"
-                        style={categoryPillStyle(category)}
-                      >
-                        {categoryById(category).label}
-                      </span>
+                      {/* Im Moment-Weg wird die Kategorie nicht gefragt —
+                          dann hat sie hier auch nichts verloren. */}
+                      {!isMoment && (
+                        <span
+                          className="chip cursor-default"
+                          style={categoryPillStyle(category)}
+                        >
+                          {categoryById(category).label}
+                        </span>
+                      )}
                       {[
                         authorName.trim(),
                         showClassField
@@ -1498,7 +1620,7 @@ export function EntryForm({
       ref={formRef}
       onSubmit={(e) => void handleSubmit(e)}
       onKeyDown={handleKeyDown}
-      className="card animate-fade-up space-y-7 p-5 shadow-(--shadow-card-lg) sm:p-7"
+      className="card animate-fade-up space-y-7 p-5 shadow-(--shadow-card-lg) sm:p-8"
     >
       {error && (
         <div
@@ -1548,13 +1670,17 @@ export function EntryForm({
                   headingRefs.current[index] = node;
                 }}
                 tabIndex={-1}
-                className="text-lg font-bold tracking-tight text-coal outline-none sm:text-xl"
+                className="text-xl leading-snug font-bold tracking-tight text-balance text-coal outline-none sm:text-2xl"
               >
                 {definition.title}
               </h2>
-              <p className="hint mt-1 leading-relaxed">{definition.lead}</p>
+              {/* Der Einleitungssatz bleibt bei rund 60 Zeichen je Zeile —
+                  darüber sucht das Auge beim Zeilenwechsel den Anfang. */}
+              <p className="mt-1.5 max-w-[46ch] text-sm leading-relaxed text-coal-soft">
+                {definition.lead}
+              </p>
 
-              <div className="mt-5 space-y-6">{stepContent(definition.key)}</div>
+              <div className="mt-6 space-y-7">{stepContent(definition.key)}</div>
 
               {problem && (
                 <p
@@ -1591,11 +1717,11 @@ export function EntryForm({
               )}
 
               {wizard && (
-                <div className="mt-7 flex items-center gap-2.5 border-t border-paper-line pt-6">
+                <div className="mt-8 flex items-center gap-2.5 border-t border-paper-line pt-6">
                   {index > 0 && (
                     <button
                       type="button"
-                      className="btn-ghost min-h-12 shrink-0"
+                      className="btn-ghost min-h-12 shrink-0 px-3.5 sm:px-4"
                       disabled={busy}
                       onClick={() => goTo(index - 1)}
                     >
@@ -1606,7 +1732,7 @@ export function EntryForm({
                   {index < lastStep ? (
                     <button
                       type="button"
-                      className="btn-accent min-h-12 flex-1 text-base"
+                      className="btn-accent min-h-12 flex-1 text-base shadow-(--shadow-card)"
                       disabled={busy}
                       onClick={() => goTo(index + 1)}
                     >
@@ -1616,7 +1742,7 @@ export function EntryForm({
                   ) : (
                     <button
                       type="submit"
-                      className="btn-accent min-h-12 flex-1 text-base"
+                      className="btn-accent min-h-12 flex-1 text-base shadow-(--shadow-card)"
                       disabled={busy || removed}
                     >
                       {busy && phase !== "deleting" && (
@@ -1640,7 +1766,7 @@ export function EntryForm({
         <div className="border-t border-paper-line pt-7">
           <button
             type="submit"
-            className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
+            className="btn-accent min-h-12 w-full text-base shadow-(--shadow-card) sm:w-auto sm:px-10"
             disabled={busy || removed}
           >
             {busy && phase !== "deleting" && (

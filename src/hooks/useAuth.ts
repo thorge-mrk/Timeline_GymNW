@@ -45,8 +45,17 @@ export function useAuth() {
     role,
     isAdmin: role === "admin",
     isContributor: role === "admin" || role === "editor",
-    signIn: (email: string, password: string) =>
-      supabase.auth.signInWithPassword({ email, password }),
+    /**
+     * `captchaToken` wird nur mitgeschickt, wenn es einen gibt. Ist der
+     * Turnstile-Schutz in Supabase aus, ignoriert der Server das Feld — der
+     * Aufruf funktioniert also in beiden Fällen unverändert.
+     */
+    signIn: (email: string, password: string, captchaToken?: string) =>
+      supabase.auth.signInWithPassword({
+        email,
+        password,
+        ...(captchaToken ? { options: { captchaToken } } : {}),
+      }),
     signOut: () => supabase.auth.signOut(),
   };
 }

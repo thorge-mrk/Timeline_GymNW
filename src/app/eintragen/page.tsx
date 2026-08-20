@@ -9,7 +9,6 @@ import {
 } from "@/components/form/EditConflictNotice";
 import { EntryForm } from "@/components/form/EntryForm";
 import { LiveEntriesBadge } from "@/components/form/LiveEntriesBadge";
-import { RecentEntries } from "@/components/form/RecentEntries";
 import { PageSpinner } from "@/components/form/Spinner";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeEntries } from "@/hooks/useRealtimeEntries";
@@ -193,13 +192,14 @@ function EintragenView() {
     onUpdated: handleUpdated,
   });
 
-  /** Zählt die eigenen Speichervorgänge — „Deine letzten Einträge“ lädt dann neu. */
-  const [savedNonce, setSavedNonce] = useState(0);
-
-  /** Merkt sich den eigenen Schreibvorgang, damit das Echo stumm bleibt. */
+  /**
+   * Merkt sich den eigenen Schreibvorgang, damit das Echo stumm bleibt.
+   *
+   * Nachgeladen werden muss hier nichts mehr: Die Liste der eigenen Beiträge
+   * hängt jetzt am Stift in der Kopfzeile und liest bei jedem Öffnen frisch.
+   */
   const handleSaved = useCallback((kind: "created" | "updated") => {
     lastSelfWriteRef.current = Date.now();
-    setSavedNonce((current) => current + 1);
     if (kind === "updated") {
       setConflict((current) => (current === "changed" ? null : current));
     }
@@ -270,9 +270,9 @@ function EintragenView() {
             Das ist nicht dein Eintrag.
           </h1>
           <p className="mt-2 max-w-prose text-sm leading-relaxed text-coal-soft">
-            Ändern kannst du deine eigenen Beiträge — sie stehen auf der
-            Eintrags-Seite unter „Deine letzten Einträge“. Fremde Erinnerungen
-            bearbeitet nur das Schul-Team.
+            Ändern kannst du deine eigenen Beiträge — sie stehen oben in der
+            Kopfzeile hinter dem Stift. Fremde Erinnerungen bearbeitet nur das
+            Schul-Team.
           </p>
           <div className="mt-6 flex flex-wrap gap-2.5">
             <Link href="/eintragen/" className="btn-accent min-h-12">
@@ -321,15 +321,21 @@ function EintragenView() {
 
   return (
     <Shell>
-      <header className="animate-fade-up mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+      {/*
+        Der Seitenkopf trägt genau drei Dinge, in dieser Reihenfolge: wo man
+        ist (Kicker), was man tut (Überschrift), und wer man dabei ist (die
+        leise Zeile darunter). Das „Abmelden“ steht bewusst am Rand — es ist
+        der Ausgang, nicht das Angebot.
+      */}
+      <header className="animate-fade-up mb-7 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+          <p className="text-[11px] font-bold tracking-[0.14em] text-coal-faint uppercase">
             Gedächtnis der Zeit
           </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-coal">
+          <h1 className="mt-1.5 text-2xl leading-tight font-bold tracking-tight text-coal sm:text-3xl">
             {editing ? "Eintrag bearbeiten" : "Neuer Eintrag"}
           </h1>
-          <p className="hint mt-1.5 leading-relaxed">
+          <p className="hint mt-2 leading-relaxed">
             Angemeldet als <span className="font-semibold">{email}</span>
             <span className="text-coal-faint"> · </span>
             Rolle: {isAdmin ? "Admin" : "Eintrag"}
@@ -337,7 +343,9 @@ function EintragenView() {
         </div>
         <button
           type="button"
-          className="btn-ghost min-h-11 shrink-0"
+          /* Bricht die Zeile um (schmaler Schirm), bleibt der Ausgang rechts
+             außen stehen — dort, wo man ihn sucht, und nicht am Textanfang. */
+          className="btn-ghost ml-auto min-h-11 shrink-0 text-xs"
           onClick={() => void handleSignOut()}
         >
           Abmelden
@@ -350,16 +358,6 @@ function EintragenView() {
           onReload={handleReload}
           onDismiss={dismissConflict}
         />
-      )}
-
-      {/*
-        Die drei jüngsten eigenen Beiträge — der Weg zurück zum Tippfehler.
-        Nur über dem leeren Formular: Wer schon bearbeitet oder gerade eine
-        Erinnerung zu einem Thema dazuschreibt, ist längst am Ziel und braucht
-        keine Liste, die ihn woanders hinschickt.
-      */}
-      {!editId && !voiceId && (
-        <RecentEntries userId={session.user.id} refreshKey={savedNonce} />
       )}
 
       <EntryForm

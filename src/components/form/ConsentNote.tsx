@@ -71,7 +71,14 @@ function LegalLink({
 
 export function ConsentNote({ note }: ConsentNoteProps) {
   return (
-    <div className="rounded-xl border border-paper-line bg-paper-sunk p-3.5">
+    /*
+      Kein zweiter grauer Kasten: Über der Einwilligung steht im Prüfschritt
+      bereits die Zusammenfassung auf gedämpftem Grund. Zwei gleich aussehende
+      Blöcke übereinander lesen sich als ein einziger langer — deshalb hier nur
+      eine Kante in Fuchs-Orange und sonst offener Satz. Sie liest sich damit
+      als Anmerkung zum Knopf darunter, was sie auch ist.
+    */
+    <div className="border-l-2 border-fox/45 pl-4">
       <p className="text-sm leading-relaxed text-coal">
         Mit dem Eintragen stimmst du den{" "}
         <LegalLink href="/nutzungsbedingungen/">Nutzungsbedingungen</LegalLink>{" "}

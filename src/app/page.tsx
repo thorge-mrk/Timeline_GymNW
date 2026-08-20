@@ -293,6 +293,18 @@ export default function Home() {
     [router]
   );
 
+  /*
+   * Nur hier ist die Seite eine Tafel: Sie füllt den Bildschirm und wird in
+   * sich geschoben. Andere Seiten — Formular, Rechtstexte — scrollen ganz
+   * gewöhnlich mit dem Browser. Der Merker geht beim Verlassen wieder weg.
+   */
+  useEffect(() => {
+    document.body.dataset.view = "zeitstrahl";
+    return () => {
+      delete document.body.dataset.view;
+    };
+  }, []);
+
   // Der Ruhezeit-Zähler startet mit dem Laden der Seite, nicht bei null —
   // sonst gälte der allererste Moment schon als „acht Sekunden nichts getan".
   useEffect(() => {
