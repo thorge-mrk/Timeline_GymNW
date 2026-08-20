@@ -102,6 +102,38 @@ const FADE_MIN = 0.88;
 const FIT_MIN = 0.5;
 const FIT_MAX = 1.6;
 
+/**
+ * Ab welcher Bühnenbreite die Wolke ALLE Themen zeigen darf.
+ *
+ * Darunter — also auf jedem hochkant gehaltenen Handy — greift die Lesegrenze
+ * `READABLE`: Die Wolke nimmt so viele der lautesten Themen, wie in lesbarer
+ * Schrift auf die Fläche passen, und mehr nicht. Vorher quetschten sich
+ * zwanzig Themen auf 390 px, alle bei 14 px, alle gleich wichtig aussehend —
+ * eine Wortwolke, die nichts mehr sagt. Der Rest verschwindet nicht: Er steht
+ * unter der Wolke als Liste (siehe `restOpen`).
+ */
+const NARROW = 640;
+
+/**
+ * Kleinste Schrift, die auf einem Handy noch gesetzt wird — in Weltpixeln.
+ *
+ * Auf dem Bildschirm kommen mindestens 94 % davon an — enger passt der
+ * Einpass-Zoom die fertige Wolke nie ein, meist zieht er sie sogar größer.
+ * 16 px Welt sind also nie weniger als gut 15 px Schrift: die Grenze, ab der
+ * eine Wortwolke im Stehen mit dem Handy in der Hand noch lesbar ist.
+ */
+const READABLE = 16;
+
+/**
+ * Der Streifen unten, der dem Knopf für die übrigen Themen gehört.
+ *
+ * Er wird schon beim Anordnen abgezogen und nicht erst beim Einpassen. Sonst
+ * reichte die Wolke bis zur Unterkante, der Einpass-Zoom müsste sie kleiner
+ * rechnen, um den Knopf freizuhalten — und genau damit wäre die Lesegrenze
+ * wieder unterlaufen, für die der ganze Aufwand betrieben wird.
+ */
+const REST_ROOM = 56;
+
 interface View {
   k: number;
   x: number;
@@ -188,16 +220,21 @@ export default function MemoryCloudFull({
   returnFocus,
 }: MemoryCloudFullProps) {
   const titleId = useId();
+  const restId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  /** Knopf und Liste der übrigen Themen — dort wird gelesen, nicht geschoben. */
+  const restRef = useRef<HTMLDivElement>(null);
 
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [fontsReady, setFontsReady] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
+  /** Steht die Liste der übrigen Themen offen? (Nur schmale Bildschirme.) */
+  const [restOpen, setRestOpen] = useState(false);
   /** Wurde geschoben oder gezoomt? Nur dann gibt es den Zurücksetzen-Knopf. */
   const [shifted, setShifted] = useState(false);
 
@@ -264,8 +301,10 @@ export default function MemoryCloudFull({
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        // Erst das Panel, dann die ganze Ansicht — eine Ebene je Druck.
+        // Eine Ebene je Druck: erst das Panel, dann die Liste der übrigen
+        // Themen, zuletzt die ganze Ansicht.
         if (selected) setSelected(null);
+        else if (restOpen) setRestOpen(false);
         else requestClose();
         return;
       }
@@ -294,7 +333,7 @@ export default function MemoryCloudFull({
 
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, [requestClose, selected]);
+  }, [requestClose, restOpen, selected]);
 
   /* ---------------------------------------------------------- Bühnengröße */
 
@@ -342,25 +381,55 @@ export default function MemoryCloudFull({
      * Aufschlag neu gerechnet.
      */
     const measure = makeMeasure(family, fontsReady ? 1 : 1.06);
-    return layoutCloud(items, measure, size);
+    const narrow = size.w < NARROW;
+    const flaeche = narrow
+      ? { w: size.w, h: Math.max(160, size.h - REST_ROOM) }
+      : size;
+    return layoutCloud(items, measure, flaeche, narrow ? READABLE : 0);
   }, [items, size, fontsReady]);
+
+  /*
+   * Was die Wolke nicht zeigt.
+   *
+   * Auf schmalen Bildschirmen bleiben Themen übrig — die leisesten, weil die
+   * Anordnung von innen nach außen setzt und beim ersten Wort abbricht, das
+   * nicht mehr lesbar unterkäme. Sie bekommen ihre eigene, ruhige Liste.
+   */
+  const rest = useMemo(() => {
+    if (!layout) return [];
+    const shown = new Set(layout.words.map((word) => word.id));
+    return words.filter((word) => !shown.has(word.entry.id));
+  }, [layout, words]);
+
+  // Wird der Bildschirm breiter, passen wieder alle hinein — dann hat die
+  // Liste keinen Inhalt mehr und darf nicht als leerer Kasten stehen bleiben.
+  useEffect(() => {
+    if (!rest.length) setRestOpen(false);
+  }, [rest.length]);
 
   /* ------------------------------------------------------------ Ausschnitt */
 
   /** Startansicht: die ganze Wolke mittig ins Bild. */
   const fit = useMemo<View>(() => {
     if (!layout || !size) return { k: 1, x: 0, y: 0 };
+    /*
+     * Steht unten der Knopf für die übrigen Themen, gehört ihm der Streifen
+     * allein. Sonst legte er sich beim Aufgehen über das leiseste Wort der
+     * Wolke — und ausgerechnet das kleinste Wort hinter einem Knopf zu
+     * verstecken wäre die schlechteste aller Lösungen.
+     */
+    const room = size.h - (rest.length ? REST_ROOM : 0);
     const raw = Math.min(
       (size.w * 0.94) / layout.box.w,
-      (size.h * 0.94) / layout.box.h
+      (room * 0.94) / layout.box.h
     );
     const k = clamp(raw, FIT_MIN, FIT_MAX);
     return {
       k,
       x: (size.w - layout.box.w * k) / 2 - layout.box.x * k,
-      y: (size.h - layout.box.h * k) / 2 - layout.box.y * k,
+      y: (room - layout.box.h * k) / 2 - layout.box.y * k,
     };
-  }, [layout, size]);
+  }, [layout, rest.length, size]);
 
   const viewRef = useRef<View>(fit);
 
@@ -526,9 +595,15 @@ export default function MemoryCloudFull({
     if (!root) return;
 
     const onWheel = (event: WheelEvent) => {
-      // Im Panel wird gelesen, nicht gezoomt — dort gehört das Rad dem Text.
+      // Im Panel und in der Liste der übrigen Themen wird gelesen, nicht
+      // gezoomt — dort gehört das Rad dem Text.
       const target = event.target;
-      if (target instanceof Node && panelRef.current?.contains(target)) return;
+      if (
+        target instanceof Node &&
+        (panelRef.current?.contains(target) || restRef.current?.contains(target))
+      ) {
+        return;
+      }
 
       event.preventDefault();
       event.stopPropagation();
@@ -587,7 +662,12 @@ export default function MemoryCloudFull({
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     const target = event.target;
-    if (target instanceof Node && panelRef.current?.contains(target)) return;
+    if (
+      target instanceof Node &&
+      (panelRef.current?.contains(target) || restRef.current?.contains(target))
+    ) {
+      return;
+    }
 
     dragged.current = false;
     travel.current = 0;
@@ -672,12 +752,15 @@ export default function MemoryCloudFull({
    * Dann steht das auch da — eine Zahl, die nicht zur Zeile im Band passt,
    * wäre ein Rätsel.
    */
+  const shownCount = layout ? layout.words.length : words.length;
   const countLabel =
-    total > words.length
-      ? `${words.length} von ${total} Beiträgen`
+    total > shownCount
+      ? `${shownCount} von ${total} Beiträgen`
       : total === 1
         ? "1 Beitrag"
         : `${total} Beiträge`;
+  const restLabel =
+    rest.length === 1 ? "1 weiterer Beitrag" : `${rest.length} weitere Beiträge`;
 
   return createPortal(
     <div
@@ -906,10 +989,95 @@ export default function MemoryCloudFull({
           </div>
         )}
 
-        <p className="mcf-hint pointer-events-none absolute bottom-3 left-4 hidden text-[11px] text-coal-faint sm:block">
-          Ziehen zum Verschieben · Scrollen oder Kneifen zum Zoomen · Wort
-          anklicken für die Stimmen
-        </p>
+        {/*
+          Die übrigen Themen.
+
+          Auf einem Handy zeigt die Wolke nur, was lesbar hineinpasst — das
+          sind die lautesten Themen. Alles andere stünde sonst als 12-px-Krümel
+          da oder gar nicht, und beides wäre eine Erinnerung, die man verliert.
+          Also bekommt es hier einen ruhigen Weg: einen Knopf, dahinter eine
+          schlichte Liste aus Titel und Anzahl. Ein Klick öffnet dieselben
+          Stimmen wie ein Wort in der Wolke — nur der Weg dorthin ist ein
+          anderer.
+
+          Der ganze Block liegt AUSSERHALB der Gesten: Rad und Zeiger prüfen
+          `restRef` und lassen die Finger davon, damit man in der Liste
+          scrollen kann, statt die Wolke zu zoomen.
+        */}
+        {rest.length > 0 && (
+          <div
+            ref={restRef}
+            className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2 px-3 pb-3"
+          >
+            {restOpen && (
+              <ul
+                id={restId}
+                className="mcf-rest card w-full max-w-md list-none overflow-y-auto p-1"
+              >
+                {rest.map((word) => {
+                  const memoryLabel =
+                    word.memories === 1
+                      ? "1 Erinnerung"
+                      : `${word.memories} Erinnerungen`;
+                  return (
+                    <li key={word.entry.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(word.entry.id);
+                          setRestOpen(false);
+                        }}
+                        title={`${word.entry.title} — ${memoryLabel}`}
+                        aria-label={`${word.entry.title}, ${memoryLabel}, öffnen`}
+                        className="mcf-rest-item flex w-full cursor-pointer items-baseline gap-3 rounded-lg px-3 py-2.5 text-left"
+                      >
+                        <span
+                          className="min-w-0 flex-1 truncate text-[14px] font-semibold"
+                          style={{ color: categoryById(word.entry.category).ink }}
+                        >
+                          {word.entry.title}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="shrink-0 text-[12px] text-coal-soft tabular-nums"
+                        >
+                          {word.memories}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setRestOpen((current) => !current)}
+              aria-expanded={restOpen}
+              aria-controls={restId}
+              className="btn-ghost mcf-rest-toggle px-4 py-2.5 text-[13px] shadow-(--shadow-card)"
+            >
+              {restLabel}
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+                className="mcf-rest-arrow shrink-0"
+                data-open={restOpen ? "true" : undefined}
+              >
+                <path
+                  d="M4 6.2 8 10.2l4-4"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </div>,
     host

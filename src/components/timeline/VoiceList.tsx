@@ -418,7 +418,7 @@ export default function VoiceList({
             <li
               key={voice.id}
               ref={bearbeitet || gefragt ? karteRef : undefined}
-              className={`relative rounded-xl py-3 pr-3.5 pl-4 ${
+              className={`relative rounded-xl px-3.5 py-3 ${
                 bearbeitet
                   ? "vl-open vl-open--edit"
                   : gefragt
@@ -426,12 +426,6 @@ export default function VoiceList({
                     : "bg-paper-sunk"
               }`}
             >
-              <span
-                aria-hidden="true"
-                className="absolute inset-y-2.5 left-0 w-[3px] rounded-full"
-                style={{ backgroundColor: accent, opacity: 0.5 }}
-              />
-
               {bearbeitet ? (
                 /* ------------------------------------------ Bearbeiten */
                 <div className="vl-unfold">

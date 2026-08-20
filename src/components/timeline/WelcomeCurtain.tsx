@@ -152,10 +152,6 @@ export default function WelcomeCurtain({ ready }: WelcomeCurtainProps) {
           aria-hidden="true"
           className="wc-rule mx-auto mt-7 block h-[2px] w-12 rounded-full bg-fox"
         />
-
-        <p className="wc-hint mt-5 text-[13px] text-coal-faint">
-          Ziehen zum Verschieben · Scrollen zum Zoomen
-        </p>
       </div>
     </div>
   );

@@ -387,29 +387,6 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Rangstufe des Eintrags (RankChoice)
- * Drei Zeilen, die sich ausschließen. Die gewählte trägt die Fuchs-Farbe —
- * sonst bleibt alles ruhig, damit die Auswahl nicht lauter ist als das
- * Formular drumherum.
- * ------------------------------------------------------------------ */
-.rank-option {
-  border-color: var(--color-paper-line);
-  background-color: var(--color-paper-sunk);
-  transition:
-    border-color 160ms var(--ease-out-strong),
-    background-color 160ms var(--ease-out-strong);
-}
-.rank-option[data-on="true"] {
-  border-color: var(--color-fox);
-  background-color: var(--color-fox-soft);
-}
-@media (hover: hover) and (pointer: fine) {
-  .rank-option[data-on="false"]:not(:has(input:disabled)):hover {
-    border-color: color-mix(in srgb, var(--color-coal-soft) 30%, transparent);
-  }
-}
-
-/* ------------------------------------------------------------------ *
  * Geführter Ablauf (StepProgress + die Schritt-Tafeln)
  *
  * Alle fünf Schritte bleiben eingehängt; nur der offene ist sichtbar.
@@ -526,9 +503,10 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Gleichwertige Wahlmöglichkeiten (Datum: „weiß ich“ / „weiß ich nicht“)
- * Bewusst dieselbe Optik wie .rank-option: Keine der beiden Antworten
- * darf wie die zweite Wahl aussehen.
+ * Wahlzeilen: das Datum („weiß ich“ / „weiß ich nicht“) und das
+ * Meilenstein-Häkchen. Bewusst dieselbe Optik für beides — keine der
+ * Antworten darf wie die zweite Wahl aussehen, und ein Häkchen ist hier
+ * keine Sonderform, sondern dieselbe ruhige Zeile.
  * ------------------------------------------------------------------ */
 .choice-row {
   border-color: var(--color-paper-line);
@@ -591,7 +569,7 @@
 }
 
 /* ------------------------------------------------------------------ *
- * Links in der Einwilligung (ConsentCheck)
+ * Links in der Einwilligung (ConsentNote)
  * Sie müssen als Link erkennbar sein, ohne den Satz zu zerreißen —
  * also unterstrichen in Fuchsfarbe, mit ein wenig Abstand zur Schrift.
  * ------------------------------------------------------------------ */

@@ -18,10 +18,12 @@
  *      inklusive `GAP` Sicherheitsabstand, der größer ist als alles, was das
  *      Schweben je an Auslenkung erzeugen kann.
  *
- *   3. VOLLSTÄNDIG. Passt bei der Wunschgröße nicht alles hinein, wird erst
- *      die Schrift kleiner gesetzt und zuletzt die Fläche größer gemacht.
- *      Weggelassen wird nie etwas — eine Erinnerung, die man nicht sieht, ist
- *      keine.
+ *   3. LESBAR. Passt bei der Wunschgröße nicht alles hinein, wird erst die
+ *      Schrift kleiner gesetzt und zuletzt die Fläche größer gemacht. Auf
+ *      einem Handybildschirm gibt es dafür keinen Platz — dort setzt die
+ *      Vollansicht eine Lesegrenze (`readable`), und was darunter stehen
+ *      müsste, wird gar nicht erst gesetzt. Verloren geht es trotzdem nicht:
+ *      Die Vollansicht führt die übrigen Themen als Liste unter der Wolke.
  */
 
 /** Ein Rechteck in Weltkoordinaten (Ursprung oben links). */
@@ -409,7 +411,20 @@ function pack(
   measure: Measure,
   world: { w: number; h: number },
   min: number,
-  max: number
+  max: number,
+  /** Untergrenze der Schriftgröße für dieses Wort. */
+  floor: number,
+  /**
+   * Darf der Durchgang unvollständig enden?
+   *
+   * Normalerweise nicht: Findet ein Wort keinen Platz, war der ganze Versuch
+   * umsonst und es wird mit kleinerer Schrift neu begonnen. Auf einem Handy
+   * gilt das Gegenteil — dort ist die Schrift schon an der Lesegrenze, und
+   * dann bricht die Anordnung an der ersten vollen Stelle ab und gibt
+   * zurück, was bis dahin steht. Weil die lautesten Themen zuerst gesetzt
+   * werden, sind das genau die, die man sehen will.
+   */
+  partial: boolean
 ): CloudPlacement[] | null {
   const field = new Field(world.w, world.h);
   const out: CloudPlacement[] = [];
@@ -446,7 +461,7 @@ function pack(
     // Abgerundet, nicht gerundet: Ein einziges Pixel zu viel würde den Kasten
     // über die erlaubte Breite schieben und den Titel doch wieder anschneiden.
     const size = Math.max(
-      MIN_SIZE,
+      floor,
       Math.floor(Math.max(wanted * SHRINK_FLOOR, Math.min(wanted, roomy)))
     );
 
@@ -460,7 +475,7 @@ function pack(
       measure
     );
     const { w, h } = boxSize(label, item.memories, size, weight, measure);
-    if (w + GAP > world.w || h + GAP > world.h) return null;
+    if (w + GAP > world.w || h + GAP > world.h) return partial ? out : null;
 
     const phase = spread(item.id, "dir") * Math.PI * 2;
     // Feinheit der Suche: große Wörter dürfen gröber abtasten, sie brauchen
@@ -493,7 +508,7 @@ function pack(
       if (r > maxRadius) break;
     }
 
-    if (!placed) return null;
+    if (!placed) return partial ? out : null;
 
     placed.x = Math.round(placed.x);
     placed.y = Math.round(placed.y);
@@ -521,8 +536,23 @@ function pack(
 /*  Die Anordnung                                                             */
 /* -------------------------------------------------------------------------- */
 
+/** Umschließendes Rechteck aller Wörter — Grundlage für den Einpass-Zoom. */
+function hull(words: readonly CloudPlacement[]): CloudBox {
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const word of words) {
+    left = Math.min(left, word.box.x);
+    top = Math.min(top, word.box.y);
+    right = Math.max(right, word.box.x + word.box.w);
+    bottom = Math.max(bottom, word.box.y + word.box.h);
+  }
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
 /**
- * Ordnet die Wolke an — und gibt garantiert alle Wörter zurück oder gar nichts.
+ * Ordnet die Wolke an.
  *
  * Reihenfolge der Versuche:
  *   1. Wunschgröße auf der Bildschirmfläche
@@ -531,13 +561,61 @@ function pack(
  *      das Fenster und man schiebt bzw. zoomt sich hindurch
  *
  * `items` muss bereits sortiert sein: das lauteste Thema zuerst.
+ *
+ * `readable` ist die Lesegrenze in Pixeln, und sie kehrt die Regel um: Statt
+ * die Schrift immer weiter zu schrumpfen, bis alle zwanzig Themen auf ein
+ * Handy passen, bleibt die Schrift stehen und die Wolke hört auf, wenn die
+ * Fläche voll ist. Zurück kommen dann WENIGER Wörter als hineingegeben —
+ * immer die lautesten, und wie viele es sind, entscheidet allein der Platz.
+ * 0 schaltet die Grenze ab; dann verhält sich alles wie auf dem Laptop, wo
+ * ohnehin genug Fläche für alle da ist.
  */
 export function layoutCloud(
   items: readonly CloudInput[],
   measure: Measure,
-  view: { w: number; h: number }
+  view: { w: number; h: number },
+  readable = 0
 ): CloudLayout | null {
   if (!items.length || view.w < 80 || view.h < 80) return null;
+
+  if (readable > 0) {
+    const range = fontRange(view.w, view.h);
+    const span = range.max - range.min;
+
+    /*
+     * Die Auswahl trifft die Schriftgröße selbst.
+     *
+     * Jedes Thema hat aus seiner Gewichtung heraus eine Größe, die ihm
+     * zusteht — auf 390 px reicht die Spanne von 14 px (eine Erinnerung) bis
+     * 45 px (fünf). Wem weniger als `readable` zusteht, der wäre in der Wolke
+     * nur noch Kleingedrucktes, das aussieht wie alle anderen. Der fliegt
+     * raus, und zwar OHNE dass dafür an der Spanne gedreht wird: Die
+     * bleibenden Themen behalten genau die Größe, die sie ohnehin hätten.
+     *
+     * `items` ist nach Erinnerungen sortiert, die Grenze schneidet also immer
+     * hinten ab — es bleiben die lautesten. Wie viele das sind, entscheidet
+     * `fontRange` und damit die Fläche: Auf einem großen Bildschirm liegt
+     * schon die kleinste Schrift über der Grenze und es fliegt niemand raus.
+     */
+    const keep = items.filter(
+      (item) => range.min + item.weight * span >= readable
+    );
+    // Das lauteste Thema bleibt immer — eine leere Wolke wäre keine Antwort.
+    const list = keep.length ? keep : items.slice(0, 1);
+    const world = { w: view.w, h: view.h };
+    const words = pack(
+      list,
+      measure,
+      world,
+      range.min,
+      range.max,
+      readable,
+      true
+    );
+    if (words && words.length) {
+      return { words, world, box: hull(words), fontScale: 1 };
+    }
+  }
 
   for (const grow of GROW_STEPS) {
     const world = { w: view.w, h: Math.round(view.h * grow) };
@@ -553,27 +631,13 @@ export function layoutCloud(
         measure,
         world,
         range.min * step,
-        range.max * step
+        range.max * step,
+        MIN_SIZE,
+        false
       );
       if (!words) continue;
 
-      let left = Infinity;
-      let top = Infinity;
-      let right = -Infinity;
-      let bottom = -Infinity;
-      for (const word of words) {
-        left = Math.min(left, word.box.x);
-        top = Math.min(top, word.box.y);
-        right = Math.max(right, word.box.x + word.box.w);
-        bottom = Math.max(bottom, word.box.y + word.box.h);
-      }
-
-      return {
-        words,
-        world,
-        box: { x: left, y: top, w: right - left, h: bottom - top },
-        fontScale: step,
-      };
+      return { words, world, box: hull(words), fontScale: step };
     }
   }
 

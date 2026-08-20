@@ -8,7 +8,7 @@ import { formatEntryDate } from "@/lib/dates";
 import { richTextToPlain } from "@/lib/richText";
 import { supabase } from "@/lib/supabase";
 import type { Entry, VoiceInsert } from "@/lib/types";
-import { ConsentCheck } from "./ConsentCheck";
+import { ConsentNote } from "./ConsentNote";
 import { SuccessCard } from "./SuccessCard";
 
 /**
@@ -143,7 +143,6 @@ export function VoiceForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [triedSubmit, setTriedSubmit] = useState(false);
-  const [consent, setConsent] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const category = categoryById(entry.category);
@@ -161,9 +160,6 @@ export function VoiceForm({
     setTriedSubmit(false);
     setError(null);
     setSaved(false);
-    // Die Einwilligung wird bewusst neu abgefragt: Sie gehört zu diesem einen
-    // Beitrag, nicht zur Sitzung.
-    setConsent(false);
     window.setTimeout(() => bodyRef.current?.focus(), 60);
   }
 
@@ -189,14 +185,6 @@ export function VoiceForm({
       );
       return;
     }
-    if (!consent) {
-      setError(
-        "Bitte stimm noch den Nutzungsbedingungen und der Datenschutzerklärung zu."
-      );
-      document.getElementById("voice-consent")?.focus();
-      return;
-    }
-
     setSaving(true);
     try {
       // `created_by` MUSS die eigene uid sein: Die Insert-Policy prüft genau
@@ -386,12 +374,10 @@ export function VoiceForm({
       </div>
 
       <div className="space-y-5 border-t border-paper-line pt-6">
-        <ConsentCheck
-          id="voice-consent"
-          checked={consent}
-          onChange={setConsent}
-          disabled={saving}
-          showError={triedSubmit}
+        {/* Dieselbe Regel wie im Eintrags-Formular: kein Häkchen mehr, sondern
+            ein Satz über dem Knopf. Wer hier landet, will einen Absatz
+            dazuschreiben — ein zusätzlicher Handgriff davor ist reine Hürde. */}
+        <ConsentNote
           note={`Deine Erinnerung steht danach öffentlich bei „${entry.title}“ — für alle Besucherinnen und Besucher der Website sichtbar.`}
         />
 
@@ -399,8 +385,7 @@ export function VoiceForm({
           <button
             type="submit"
             className="btn-accent min-h-12 w-full text-base sm:w-auto sm:px-10"
-            disabled={saving || !consent}
-            aria-describedby={!consent ? "voice-submit-grund" : undefined}
+            disabled={saving}
           >
             {saving && (
               <span
@@ -410,12 +395,6 @@ export function VoiceForm({
             )}
             {saving ? "Wird gespeichert …" : "Erinnerung hinzufügen"}
           </button>
-          {/* Ein grauer Knopf ohne Grund ist eine Sackgasse — der Grund steht dabei. */}
-          {!consent && (
-            <p id="voice-submit-grund" className="hint mt-2.5 leading-relaxed">
-              Der Knopf wird aktiv, sobald du oben zugestimmt hast.
-            </p>
-          )}
         </div>
       </div>
     </form>

@@ -9,6 +9,7 @@ import {
 } from "@/components/form/EditConflictNotice";
 import { EntryForm } from "@/components/form/EntryForm";
 import { LiveEntriesBadge } from "@/components/form/LiveEntriesBadge";
+import { RecentEntries } from "@/components/form/RecentEntries";
 import { PageSpinner } from "@/components/form/Spinner";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeEntries } from "@/hooks/useRealtimeEntries";
@@ -37,7 +38,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-type LoadState = "idle" | "loading" | "ready" | "missing" | "error";
+type LoadState = "idle" | "loading" | "ready" | "missing" | "foreign" | "error";
 
 /**
  * Das eigene Speichern kommt als Broadcast zurück. Ein Update am bearbeiteten
@@ -81,9 +82,17 @@ function EintragenView() {
     if (!loading && !session) router.replace("/login/");
   }, [loading, session, router]);
 
-  // Bearbeiten-Modus: vorhandenen Eintrag laden (auch erneut nach „Neu laden“).
+  /*
+   * Bearbeiten-Modus: vorhandenen Eintrag laden (auch erneut nach „Neu laden“).
+   *
+   * Das dürfen seit Neuestem BEIDE Rollen — ein Eintrag-Konto allerdings nur
+   * für seine eigenen Beiträge (Policy entries_update_own_editor). Geprüft
+   * wird das hier trotzdem, obwohl die Datenbank es ohnehin durchsetzt: Ein
+   * Formular, das sich öffnen lässt und erst beim Speichern „keine
+   * Berechtigung“ sagt, hat einem Menschen gerade seine Arbeit gekostet.
+   */
   useEffect(() => {
-    if (!editId || !userId || !isAdmin) return;
+    if (!editId || !userId) return;
     let active = true;
     setLoadState("loading");
     setLoadError(null);
@@ -105,6 +114,10 @@ function EintragenView() {
       }
       if (!data) {
         setLoadState("missing");
+        return;
+      }
+      if (!isAdmin && data.created_by !== userId) {
+        setLoadState("foreign");
         return;
       }
       setEntry({ ...data, category: categoryById(data.category).id });
@@ -180,9 +193,13 @@ function EintragenView() {
     onUpdated: handleUpdated,
   });
 
+  /** Zählt die eigenen Speichervorgänge — „Deine letzten Einträge“ lädt dann neu. */
+  const [savedNonce, setSavedNonce] = useState(0);
+
   /** Merkt sich den eigenen Schreibvorgang, damit das Echo stumm bleibt. */
   const handleSaved = useCallback((kind: "created" | "updated") => {
     lastSelfWriteRef.current = Date.now();
+    setSavedNonce((current) => current + 1);
     if (kind === "updated") {
       setConflict((current) => (current === "changed" ? null : current));
     }
@@ -240,20 +257,26 @@ function EintragenView() {
     );
   }
 
-  if (editId && !isAdmin) {
+  if (editId && (loadState === "idle" || loadState === "loading")) {
+    return <PageSpinner label="Eintrag wird geladen …" />;
+  }
+
+  // Fremder Beitrag: Ändern darf man nur, was man selbst geschrieben hat.
+  if (editId && loadState === "foreign") {
     return (
       <Shell>
         <div className="card animate-fade-up p-6 shadow-(--shadow-card-lg) sm:p-7">
           <h1 className="text-lg font-bold tracking-tight text-coal">
-            Bearbeiten ist nur mit dem Admin-Konto möglich.
+            Das ist nicht dein Eintrag.
           </h1>
           <p className="mt-2 max-w-prose text-sm leading-relaxed text-coal-soft">
-            Mit diesem Konto lassen sich neue Erinnerungen anlegen — Änderungen
-            an bestehenden Einträgen macht das Admin-Konto.
+            Ändern kannst du deine eigenen Beiträge — sie stehen auf der
+            Eintrags-Seite unter „Deine letzten Einträge“. Fremde Erinnerungen
+            bearbeitet nur das Schul-Team.
           </p>
           <div className="mt-6 flex flex-wrap gap-2.5">
             <Link href="/eintragen/" className="btn-accent min-h-12">
-              Neuen Eintrag anlegen
+              Zu meinen Einträgen
             </Link>
             <Link href="/" className="btn-ghost min-h-12">
               Zum Zeitstrahl
@@ -262,10 +285,6 @@ function EintragenView() {
         </div>
       </Shell>
     );
-  }
-
-  if (editId && (loadState === "idle" || loadState === "loading")) {
-    return <PageSpinner label="Eintrag wird geladen …" />;
   }
 
   if (editId && (loadState === "missing" || loadState === "error")) {
@@ -331,6 +350,16 @@ function EintragenView() {
           onReload={handleReload}
           onDismiss={dismissConflict}
         />
+      )}
+
+      {/*
+        Die drei jüngsten eigenen Beiträge — der Weg zurück zum Tippfehler.
+        Nur über dem leeren Formular: Wer schon bearbeitet oder gerade eine
+        Erinnerung zu einem Thema dazuschreibt, ist längst am Ziel und braucht
+        keine Liste, die ihn woanders hinschickt.
+      */}
+      {!editId && !voiceId && (
+        <RecentEntries userId={session.user.id} refreshKey={savedNonce} />
       )}
 
       <EntryForm
