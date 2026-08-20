@@ -22,6 +22,9 @@ function Dot() {
 /**
  * Fußzeile. Einzige Client-Komponente am Seitenrahmen, weil sie im
  * Vollbildmodus verschwinden muss — dann bekommt der Zeitstrahl ihre Höhe.
+ * In der Wolken-Vollansicht geht sie ebenfalls weg; das entscheidet dort aber
+ * nicht diese Komponente, sondern eine Regel in site.css am Merkmal
+ * `body[data-cloud]` — die Wolke liegt zwei Ebenen tiefer im Baum.
  *
  * Das Jahr kommt als Eigenschaft aus layout.tsx: Beim statischen Export steht
  * es schon im vorgerenderten HTML; würde die Komponente es selbst berechnen,
@@ -38,8 +41,11 @@ export default function SiteFooter({ year }: { year: number }) {
   if (settings.fullscreen) return null;
 
   return (
-    <footer className="border-t border-paper-line bg-paper-card">
-      <div className="mx-auto flex w-full max-w-screen-2xl flex-wrap items-center justify-between gap-x-6 px-4 py-1 text-[11px] text-coal-soft sm:px-6 sm:text-xs">
+    <footer className="site-footer border-t border-paper-line bg-paper-card">
+      {/* Volle Breite, aus demselben Grund wie in der Kopfzeile: Auf einem
+          sehr breiten Bildschirm soll die Zeile an den Rändern stehen und
+          nicht als schmaler Streifen in der Mitte. */}
+      <div className="flex w-full flex-wrap items-center justify-between gap-x-6 px-4 py-1 text-[11px] text-coal-soft sm:px-6 sm:text-xs">
         <p>
           © {year} Gymnasium Neu Wulmstorf
           <span className="hidden sm:inline"> · Das Gedächtnis der Zeit</span>

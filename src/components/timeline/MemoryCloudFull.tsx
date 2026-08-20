@@ -277,6 +277,26 @@ export default function MemoryCloudFull({
     setHost(document.body);
   }, []);
 
+  /*
+   * Solange die Wolke den Bildschirm füllt, geht die Fußzeile weg.
+   *
+   * Sie steht im Seitenrahmen und damit außerhalb dieses Portals — die Wolke
+   * legt sich zwar darüber, aber „Impressum · Datenschutz · …" schimmerte am
+   * unteren Rand durch und die untersten Wörter liefen hinein. Hier ist der
+   * Bildschirm die Bühne; die Rechtslinks stehen davor und danach.
+   *
+   * Der Weg über ein Merkmal am `body` ist derselbe wie beim Zeitstrahl
+   * (`data-view`): Der Seitenrahmen ist eine Server-Komponente zwei Ebenen
+   * höher, und ein Zustand, der nur eine Randleiste ausblendet, ist es nicht
+   * wert, durch das halbe Formular gereicht zu werden.
+   */
+  useEffect(() => {
+    document.body.dataset.cloud = "voll";
+    return () => {
+      delete document.body.dataset.cloud;
+    };
+  }, []);
+
   useEffect(() => {
     const fonts = document.fonts;
     if (!fonts) {

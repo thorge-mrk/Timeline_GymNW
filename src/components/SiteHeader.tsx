@@ -15,7 +15,14 @@ import "./site.css";
 export default function SiteHeader() {
   return (
     <header className="relative z-40 border-b border-navy-line bg-navy text-paper shadow-(--shadow-card)">
-      <div className="mx-auto flex h-14 w-full max-w-screen-2xl items-center justify-between gap-3 px-4 sm:px-6">
+      {/*
+        Volle Breite, keine Mitte. Die Zeile war früher auf Bildschirmbreite
+        gedeckelt und zentriert — auf dem Smartboard in der Aula (fast 4 000 px)
+        hing das Signet dadurch gut einen halben Meter neben dem linken Rand,
+        und die Knöpfe endeten irgendwo in der Fläche. Der Zeitstrahl darunter
+        nutzt ohnehin die ganze Breite; die Kopfzeile tut es jetzt auch.
+      */}
+      <div className="flex h-14 w-full items-center justify-between gap-3 px-4 sm:px-6">
         <Link
           href="/"
           className="brand-link flex min-w-0 items-center gap-2.5 rounded-lg"

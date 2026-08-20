@@ -176,3 +176,22 @@
 .settings-switch[data-on="true"] .settings-switch__knob {
   transform: translateX(1rem);
 }
+
+/* ==========================================================================
+   Fußzeile
+   ========================================================================== */
+
+/*
+ * In der Wolken-Vollansicht ist der Bildschirm die Bühne.
+ *
+ * Die Wolke liegt als eigene Ebene über der Seite, die Fußzeile steht aber im
+ * Seitenrahmen darunter und schimmerte am unteren Rand durch — die untersten
+ * Wörter liefen mitten in „Impressum · Datenschutz · …". Das Merkmal setzt die
+ * Vollansicht, solange sie offen ist (MemoryCloudFull.tsx).
+ *
+ * Den Weg zurück nimmt das niemandem: Der größte Knopf dieser Ansicht heißt
+ * „Zurück zum Zeitstrahl" und steht oben links.
+ */
+body[data-cloud="voll"] .site-footer {
+  display: none;
+}
