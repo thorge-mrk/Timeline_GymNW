@@ -49,7 +49,7 @@ const CLASS_MAX = 30;
  * Der Satz, der gespeichert wird, wenn jemand nur seinen Namen dalässt.
  * Er behauptet nichts, was nicht stimmt — genau das sagt dieser Klick aus.
  */
-const FALLBACK_BODY = "Ich war auch dabei.";
+export const FALLBACK_BODY = "Ich war auch dabei.";
 
 const NETWORK_MESSAGE =
   "Keine Verbindung zum Server — bitte die Internetverbindung prüfen und noch einmal versuchen.";

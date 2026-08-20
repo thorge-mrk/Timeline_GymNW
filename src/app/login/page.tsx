@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PageSpinner } from "@/components/form/Spinner";
+import { Turnstile, turnstileEnabled } from "@/components/form/Turnstile";
 import { useAuth } from "@/hooks/useAuth";
 
 /** Supabase antwortet auf Englisch — hier die deutschen Entsprechungen. */
@@ -23,6 +24,9 @@ function describeAuthError(raw: string): string {
     m.includes("request this after")
   ) {
     return "Zu viele Versuche — bitte kurz warten.";
+  }
+  if (m.includes("captcha")) {
+    return "Die Sicherheitsprüfung ist fehlgeschlagen — bitte die Seite neu laden und es noch einmal versuchen.";
   }
   if (m.includes("email not confirmed")) {
     return "Diese E-Mail-Adresse ist noch nicht bestätigt — bitte beim Admin melden.";
@@ -45,6 +49,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Frischer Nachweis von Turnstile — leer, solange keiner vorliegt. */
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  /** Widget kam nicht zustande — dann entscheidet der Server, nicht wir. */
+  const [captchaAusgefallen, setCaptchaAusgefallen] = useState(false);
 
   // Bereits angemeldet? Dann direkt zum Formular.
   useEffect(() => {
@@ -61,12 +69,35 @@ export default function LoginPage() {
       return;
     }
 
+    /*
+     * Fehlt der Nachweis, obwohl das Widget läuft, ist er einfach noch nicht
+     * fertig — dann kurz warten statt in eine Serverabfuhr zu rennen.
+     *
+     * Ist das Widget dagegen gar nicht erst zustande gekommen, versuchen wir
+     * es trotzdem: Vielleicht verlangt der Server gar kein Captcha. Diese
+     * Entscheidung gehört ihm, nicht uns — sonst sperrt eine kaputte
+     * Cloudflare-Verbindung die Schule aus ihrer eigenen Seite aus.
+     */
+    if (turnstileEnabled && !captcha && !captchaAusgefallen) {
+      setError(
+        "Die Sicherheitsprüfung läuft noch — bitte einen Moment warten und es dann noch einmal versuchen."
+      );
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
-      const { error: authError } = await signIn(mail, password);
+      const { error: authError } = await signIn(
+        mail,
+        password,
+        captcha ?? undefined
+      );
       if (authError) {
         setError(describeAuthError(authError.message));
+        // Ein Nachweis gilt genau einen Versuch lang — das Widget legt von
+        // selbst einen neuen nach.
+        setCaptcha(null);
         setBusy(false);
         return;
       }
@@ -175,6 +206,16 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
+
+          {/*
+            Der Anmelde-Schutz. Er sitzt bewusst direkt über dem Knopf: Wenn er
+            sich doch einmal meldet, sieht man sofort, warum es gerade nicht
+            weitergeht. Ohne hinterlegten Schlüssel zeichnet er gar nichts.
+          */}
+          <Turnstile
+            onToken={setCaptcha}
+            onUnavailable={() => setCaptchaAusgefallen(true)}
+          />
 
           <button
             type="submit"

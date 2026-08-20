@@ -8,12 +8,17 @@ interface SmartDateInputProps {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
-  /** Erst nach einem Absende-Versuch die „Pflichtfeld“-Meldung zeigen. */
-  showRequiredError?: boolean;
 }
 
 const FORMAT_HINT = "Bitte so eingeben: 1996 · 3.1996 · 12.3.1996";
-const CALM_HINT = "Nur das Jahr reicht schon — Monat und Tag sind optional.";
+/**
+ * Der Ruhezustand sagt beides in einem Satz: wie wenig genügt — und was
+ * passiert, wenn gar nichts dasteht. Früher stand darüber eine eigene Frage
+ * („Weißt du das Datum?“) mit zwei Karten; die Antwort darauf gibt man jetzt
+ * einfach dadurch, dass man tippt oder nicht tippt.
+ */
+const CALM_HINT =
+  "Nur das Jahr reicht schon. Lässt du das Feld leer, kommt der Eintrag in die Erinnerungs-Wolke.";
 
 function CheckIcon() {
   return (
@@ -51,7 +56,9 @@ function AlertIcon() {
 }
 
 /**
- * Ein einziges Textfeld für alle Datums-Genauigkeiten (Jahr / Monat / Tag).
+ * Ein einziges Textfeld für alle Datums-Genauigkeiten (Jahr / Monat / Tag) —
+ * und ausdrücklich ein freiwilliges: Ohne Eingabe gibt es kein Datum, und der
+ * Eintrag steht in der Erinnerungs-Wolke statt auf der Achse.
  * Darunter läuft live mit, wie das Datum später auf dem Zeitstrahl steht.
  *
  * Alle vier Zustände der Hinweiszeile liegen übereinander in derselben
@@ -64,14 +71,12 @@ export function SmartDateInput({
   value,
   onChange,
   disabled = false,
-  showRequiredError = false,
 }: SmartDateInputProps) {
   const trimmed = value.trim();
   const parsed = useMemo(() => parseSmartDate(value), [value]);
   const hasInput = trimmed.length > 0;
   const isInvalid = hasInput && parsed === null;
-  const isMissing = !hasInput && showRequiredError;
-  const isCalm = !parsed && !isInvalid && !isMissing;
+  const isCalm = !parsed && !isInvalid;
 
   /*
    * Der zuletzt gültige Text bleibt stehen, während die Erfolgszeile
@@ -87,16 +92,18 @@ export function SmartDateInput({
     ? `Wird angezeigt als: ${formatSmartDate(parsed)}`
     : isInvalid
       ? FORMAT_HINT
-      : isMissing
-        ? `Bitte ein Jahr angeben. ${FORMAT_HINT}`
-        : "";
+      : "";
 
   return (
     <div>
-      <label className="label" htmlFor={id}>
-        Wann? <span aria-hidden className="font-bold text-fox-deep">*</span>
-        <span className="sr-only">(Pflichtfeld)</span>
-      </label>
+      <div className="flex items-baseline justify-between gap-3">
+        <label className="label" htmlFor={id}>
+          Datum
+        </label>
+        <span aria-hidden className="hint">
+          freiwillig
+        </span>
+      </div>
 
       <input
         id={id}
@@ -109,7 +116,7 @@ export function SmartDateInput({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        aria-invalid={isInvalid || isMissing}
+        aria-invalid={isInvalid}
         aria-describedby={`${id}-status ${id}-hint`}
       />
 
@@ -136,10 +143,6 @@ export function SmartDateInput({
         <p className="note-line note-line--bad" data-on={isInvalid}>
           <AlertIcon />
           <span>{FORMAT_HINT}</span>
-        </p>
-        <p className="note-line note-line--bad" data-on={isMissing}>
-          <AlertIcon />
-          <span>Bitte ein Jahr angeben — {FORMAT_HINT}</span>
         </p>
       </div>
     </div>

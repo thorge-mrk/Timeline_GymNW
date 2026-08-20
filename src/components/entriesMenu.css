@@ -1,0 +1,135 @@
+/*
+ * Der Stift in der Kopfzeile und sein Menü.
+ *
+ * Ergänzt site.css (dort stehen `.settings-pop` mit Ein- und Ausgang sowie die
+ * Kurven) und enthält nur, was sich mit Tailwind-Utilities nicht sauber
+ * ausdrücken lässt: Hover ausschließlich auf echten Zeigergeräten, Zustände
+ * über `aria-expanded`, und eine Liste, die scrollt statt zu wachsen.
+ * Farben ausschließlich aus den Tokens in globals.css.
+ */
+
+/* ------------------------------------------------------------------ *
+ * Der Stift-Knopf — 44 × 44 px, gleiche Sprache wie das Zahnrad daneben
+ * ------------------------------------------------------------------ */
+.entries-btn {
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    transform 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .entries-btn:hover {
+    background-color: var(--color-navy-soft);
+    color: var(--color-paper);
+  }
+}
+.entries-btn:active {
+  transform: scale(0.94);
+  transition-duration: 100ms;
+}
+/* Solange das Menü offen ist, bleibt der Knopf sichtbar „gedrückt“. */
+.entries-btn[aria-expanded="true"] {
+  background-color: var(--color-navy-soft);
+  color: var(--color-paper);
+}
+/* Der Stift hebt beim Öffnen leicht an — er setzt gleich an zu schreiben. */
+.entries-btn .entries-btn__icon {
+  transition: transform 220ms var(--ease-out-strong);
+}
+.entries-btn[aria-expanded="true"] .entries-btn__icon {
+  transform: translate(1px, -1px) rotate(-8deg);
+}
+
+/* ------------------------------------------------------------------ *
+ * Die Liste
+ *
+ * 58 Einträge sind kein Menü mehr, sondern ein Bestand: Die Liste bekommt
+ * eine feste Höhe und scrollt darin. `overscroll-behavior` hält das Scrollen
+ * im Menü — sonst rutscht dahinter der Zeitstrahl weg.
+ * ------------------------------------------------------------------ */
+.entries-scroll {
+  max-height: min(58vh, 21rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Platz für den eigenen Fokusring der Zeilen. */
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-paper-line) transparent;
+}
+.entries-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.entries-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: var(--color-paper-line);
+}
+
+/* Eine Zeile: in Ruhe unscheinbar, unter dem Zeiger eine Fläche. */
+.entries-item {
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 150ms var(--ease-out-strong),
+    transform 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .entries-item:hover {
+    background-color: var(--color-paper-sunk);
+  }
+}
+.entries-item:active {
+  transform: scale(0.985);
+  transition-duration: 100ms;
+}
+
+/* Der Papierkorb bekennt erst Farbe, wenn man ihn meint.
+
+   Auf Zeigergeräten tritt er zurück, bis die Zeile gemeint ist: Sechzig
+   kräftige Papierkörbe untereinander sind ein Muster, keine Information — und
+   das Löschen ist hier die Ausnahme. Ganz verschwinden darf er trotzdem
+   nicht: Wer ihn nie gesehen hat, sucht ihn auch nicht. Auf Tippgeräten gibt
+   es kein „gemeint“, dort steht er von Anfang an voll da. */
+.entries-del {
+  cursor: pointer;
+  color: var(--color-coal-faint);
+  transition:
+    opacity 150ms var(--ease-out-strong),
+    background-color 150ms var(--ease-out-strong),
+    color 150ms var(--ease-out-strong),
+    transform 150ms var(--ease-out-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .entries-del {
+    opacity: 0.4;
+  }
+  .entries-row:hover .entries-del,
+  .entries-row:focus-within .entries-del {
+    opacity: 1;
+  }
+  .entries-del:hover {
+    background-color: color-mix(in srgb, var(--color-brick) 8%, transparent);
+    color: color-mix(in srgb, var(--color-brick) 88%, var(--color-coal));
+  }
+}
+.entries-del:active {
+  transform: scale(0.94);
+  transition-duration: 100ms;
+}
+
+/* ------------------------------------------------------------------ *
+ * Die Rückfrage vor dem Löschen
+ * Sie bleibt an Ort und Stelle in der Liste stehen: Man sieht weiter, worum
+ * es geht, und muss keinen Dialog wegklicken, um es nachzulesen.
+ * ------------------------------------------------------------------ */
+.entries-confirm {
+  border: 1px solid color-mix(in srgb, var(--color-brick) 30%, transparent);
+  border-radius: 0.75rem;
+  background-color: color-mix(in srgb, var(--color-brick) 6%, transparent);
+  padding: 0.75rem;
+}
+
+.entries-error {
+  border-color: color-mix(in srgb, var(--color-brick) 26%, transparent);
+  background-color: color-mix(in srgb, var(--color-brick) 7%, transparent);
+  color: color-mix(in srgb, var(--color-brick) 88%, var(--color-coal));
+}
