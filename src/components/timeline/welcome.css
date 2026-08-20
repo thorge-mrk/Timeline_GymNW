@@ -11,7 +11,15 @@
    ========================================================================== */
 
 .wc-curtain {
-  background: color-mix(in srgb, var(--color-paper) 92%, transparent);
+  /*
+   * Zweimal dieselbe Eigenschaft, und das mit Absicht: Der Browser behält die
+   * letzte Zeile, die er versteht. Kennt er `color-mix()` nicht — auf dem
+   * Smartboard in der Aula war das so —, bleibt der Vorhang eben ganz
+   * deckend statt zu 92 %. Ohne den Rückfall stünde die Begrüßung ohne
+   * Hintergrund mitten im Zeitstrahl und wäre nicht zu lesen.
+   */
+  background-color: var(--color-paper);
+  background-color: color-mix(in srgb, var(--color-paper) 92%, transparent);
   backdrop-filter: blur(3px);
   animation: wc-in 380ms var(--ease-out-strong) both;
 }

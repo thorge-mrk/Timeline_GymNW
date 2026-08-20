@@ -91,13 +91,25 @@
  * dem sie zu leuchten scheint.
  */
 .mcf-root {
-  background:
-    radial-gradient(
-      118% 76% at 50% 40%,
-      color-mix(in srgb, var(--color-fox) 9%, transparent),
-      transparent 62%
-    ),
-    var(--color-paper);
+  /*
+   * Farbe und Verlauf stehen bewusst in ZWEI Zeilen statt in einem
+   * `background`-Kürzel.
+   *
+   * Im Verlauf steckt `color-mix()`. Kennt ein Browser diese Funktion nicht,
+   * verwirft er nicht nur den Verlauf, sondern die ganze Zeile — im Kürzel
+   * hing das Papier mit drin. Genau das ist auf dem Smartboard in der Aula
+   * passiert: Die Wolke stand durchsichtig über dem Zeitstrahl, Wörter und
+   * Jahreszahlen lagen übereinander.
+   *
+   * Getrennt kann höchstens noch der Schimmer wegfallen. Der Papiergrund
+   * steht in jedem Browser.
+   */
+  background-color: var(--color-paper);
+  background-image: radial-gradient(
+    118% 76% at 50% 40%,
+    color-mix(in srgb, var(--color-fox) 9%, transparent),
+    transparent 62%
+  );
   animation: mcf-veil-in 220ms var(--ease-out-strong) both;
 }
 
