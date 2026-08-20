@@ -37,6 +37,16 @@ export interface CloudWord {
 interface MemoryCloudFullProps {
   /** Bereits sortiert: das lauteste Thema zuerst. */
   words: CloudWord[];
+  /**
+   * Ein Thema, das schon beim Aufziehen offen stehen soll.
+   *
+   * Das Band zeigt die lautesten Themen als Wörter; wer dort eines antippt,
+   * meint dieses eine und nicht die Wolke im Ganzen. Statt ihn in der frisch
+   * aufgezogenen Wolke suchen zu lassen, steht das Panel dann sofort — die
+   * Ansicht rückt das Wort ohnehin von selbst frei (siehe der Effekt zu
+   * `selected`), sodass man auch sieht, WO in der Wolke man gelandet ist.
+   */
+  initialSelected?: string;
   /** Wie viele datumslose Beiträge es insgesamt gibt (kann größer sein als `words`). */
   total: number;
   /** Stimmen für das Panel. Fehlt die Funktion, zeigt das Panel nur den Eintrag. */
@@ -211,6 +221,7 @@ function makeMeasure(family: string, slack: number): Measure {
  */
 export default function MemoryCloudFull({
   words,
+  initialSelected,
   total,
   voicesFor,
   onOpenEntry,
@@ -231,7 +242,15 @@ export default function MemoryCloudFull({
   const [host, setHost] = useState<HTMLElement | null>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [fontsReady, setFontsReady] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  /*
+   * Nur der ANFANGSWERT — danach gehört die Auswahl dieser Ansicht allein.
+   * Die Vollansicht wird pro Öffnen neu gebaut (`{open && …}` im Band), ein
+   * Nachziehen bei geänderter Eigenschaft wäre also nicht nur unnötig,
+   * sondern würde das Panel wieder aufreißen, das jemand gerade zugemacht hat.
+   */
+  const [selected, setSelected] = useState<string | null>(
+    initialSelected ?? null
+  );
   const [closing, setClosing] = useState(false);
   /** Steht die Liste der übrigen Themen offen? (Nur schmale Bildschirme.) */
   const [restOpen, setRestOpen] = useState(false);

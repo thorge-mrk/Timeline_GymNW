@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { categoryById } from "@/lib/categories";
 import { peopleFor } from "@/lib/entryGroups";
 import type { Entry, Voice } from "@/lib/types";
@@ -52,7 +52,49 @@ const FILLER = new Set([
 ]);
 
 /** So viele Themen zeigt das Band als Vorgeschmack. */
-const PEEK_COUNT = 3;
+const PEEK_COUNT = 5;
+
+/**
+ * Die Größenspanne der Wörter IM BAND, in Pixeln.
+ *
+ * Auch hier soll man sehen, welches Thema das lauteste ist — aber das Band
+ * ist eine Zeile am unteren Rand und kein zweiter Auftritt. In der
+ * Vollansicht liegt zwischen dem leisesten und dem lautesten Wort der Faktor
+ * fünf; das ist dort richtig, weil die Wolke die ganze Fläche hat, um es zu
+ * tragen. Eine Zeile verträgt das nicht: Wörter, die um das Fünffache
+ * auseinanderliegen, machen aus der Leiste eine Zickzacklinie und schieben
+ * die Grundlinie bei jedem Datenstand woanders hin.
+ *
+ * 11,5 px bis 14,5 px sind FAKTOR 1,26 — drei Pixel Unterschied zwischen dem
+ * ersten und dem fünften Wort. Nebeneinander gelesen ist die Rangfolge damit
+ * eindeutig, die Zeile bleibt aber eine Zeile: Alle fünf Größen liegen um die
+ * 13 px der Überschrift herum, keine sticht heraus, keine verschwindet.
+ */
+const PEEK_MIN_PX = 11.5;
+const PEEK_MAX_PX = 14.5;
+
+/**
+ * Ab welcher Fensterbreite das wievielte Wort mitkommt.
+ *
+ * Fünf Wörter brauchen Platz, den ein Handy hochkant nicht hat. Statt sie
+ * dort umbrechen zu lassen — aus einer Leiste würden zwei Zeilen, und der
+ * Zeitstrahl verlöre sie — zeigt das Band einfach WENIGER: auf 390 px steht
+ * allein das lauteste Thema, ab 440 px kommt das zweite dazu, ab 560 px das
+ * dritte, ab 700 px das vierte, ab 860 px alle fünf.
+ *
+ * Die Schwellen sind gemessen, nicht geraten: An jeder steht das neu
+ * hinzukommende Wort mit den echten Titeln noch vollständig neben der
+ * Überschrift, mit Luft nach rechts. Ein Wort weniger ist besser als ein
+ * angeschnittenes — abgeschnittene Schrift verspricht Text, den es nicht
+ * gibt, und das ist in einer Wortwolke das Schlimmste, was passieren kann.
+ */
+const PEEK_AT = [
+  "flex",
+  "hidden min-[440px]:flex",
+  "hidden min-[560px]:flex",
+  "hidden min-[700px]:flex",
+  "hidden min-[860px]:flex",
+];
 
 /**
  * Wenn ALLE Themen gleich viele Stimmen haben, gibt es keine Rangfolge —
@@ -164,9 +206,11 @@ function keyword(title: string): string {
  * ZWEI ZUSTÄNDE, mehr nicht:
  *
  *   BAND         Eine schmale Leiste am unteren Rand des Zeitstrahls:
- *                „Erinnerungen ohne Datum · 14 Beiträge“, dazu die drei
- *                lautesten Themen als Vorgeschmack. Solange niemand danach
- *                fragt, nimmt sie der Achse eine Zeile weg und sonst nichts.
+ *                „Erinnerungen ohne Datum“, dahinter die fünf lautesten
+ *                Themen als blanke Wörter — das wichtigste zuerst, leicht
+ *                nach Größe gestaffelt. Ein Klick auf ein Wort öffnet
+ *                genau dieses Thema. Solange niemand danach fragt, nimmt
+ *                die Leiste der Achse eine Zeile weg und sonst nichts.
  *
  *   VOLLANSICHT  Ein Klick, und die Wolke steht bildschirmfüllend über dem
  *                Zeitstrahl (`MemoryCloudFull`): zentriert im Raum verteilt,
@@ -193,6 +237,27 @@ export default function MemoryCloud({
 }: MemoryCloudProps): React.ReactElement | null {
   /** Das Band bekommt den Fokus zurück, wenn die Vollansicht schließt. */
   const toggleRef = useRef<HTMLButtonElement>(null);
+
+  /**
+   * Welches Thema hat die Vollansicht aufgestoßen?
+   *
+   * Wer im Band auf „Pausen" tippt, will die Pausen sehen — nicht eine Wolke,
+   * in der er „Pausen" erst wiederfinden muss. Die id wandert deshalb als
+   * Startauswahl in die Vollansicht; die kennt den Weg dorthin schon, weil
+   * die Liste der übrigen Themen ihn ebenfalls geht. `null` heißt: Es wurde
+   * die Leiste selbst angetippt, dann öffnet die Wolke wie bisher als Ganzes.
+   */
+  const [openedWith, setOpenedWith] = useState<string | null>(null);
+
+  /**
+   * Wohin der Fokus zurückgeht, wenn die Vollansicht schließt.
+   *
+   * Nicht immer an die Leiste: Wer mit der Tastatur auf „Pausen" war und von
+   * dort aufgezogen hat, will hinterher wieder auf „Pausen" stehen und nicht
+   * drei Stationen davor. Gemerkt wird deshalb der Knopf, der die Ansicht
+   * tatsächlich geöffnet hat.
+   */
+  const backRef = useRef<HTMLElement | null>(null);
 
   const words = useMemo<CloudWord[]>(() => {
     const counted = entries.map((entry) => ({
@@ -245,10 +310,50 @@ export default function MemoryCloud({
     return shown;
   }, [entries, voiceCount]);
 
+  /*
+   * Die Größen der Bandwörter — eigene Rechnung, nicht die der Wolke.
+   *
+   * `word.weight` ist gegen ALLE Themen normiert; unter den fünf lautesten
+   * lägen die Werte dicht beieinander und die Staffelung wäre kaum zu sehen.
+   * Hier wird deshalb noch einmal normiert, aber nur innerhalb dieser fünf —
+   * und linear in den Erinnerungen, nicht über die Kennlinie: Eine Zeile
+   * braucht keine Spreizung, sie braucht eine Reihenfolge.
+   *
+   * Gleich viele Erinnerungen ergeben gleiche Größe. Das ist kein Versehen:
+   * Zwei Themen mit je drei Erinnerungen sind gleich laut, und ein
+   * erfundener Unterschied wäre gelogen. Sind ALLE fünf gleich laut, stehen
+   * sie zusammen auf der Mitte der Spanne.
+   */
+  const peek = useMemo(() => {
+    const top = words.slice(0, PEEK_COUNT);
+    let low = Infinity;
+    let high = 0;
+    for (const word of top) {
+      if (word.memories < low) low = word.memories;
+      if (word.memories > high) high = word.memories;
+    }
+    const span = high - low;
+    return top.map((word) => ({
+      word,
+      size:
+        span > 0
+          ? PEEK_MIN_PX +
+            ((word.memories - low) / span) * (PEEK_MAX_PX - PEEK_MIN_PX)
+          : (PEEK_MIN_PX + PEEK_MAX_PX) / 2,
+    }));
+  }, [words]);
+
   if (!words.length) return null;
 
   const total = entries.length;
   const countLabel = total === 1 ? "1 Beitrag" : `${total} Beiträge`;
+
+  /** Die Wolke aufziehen — mit oder ohne vorgewähltes Thema. */
+  const openCloud = (entryId: string | null, from: HTMLElement | null) => {
+    backRef.current = from ?? toggleRef.current;
+    setOpenedWith(entryId);
+    onOpenChange(true);
+  };
 
   return (
     <>
@@ -256,86 +361,109 @@ export default function MemoryCloud({
         aria-label="Erinnerungen ohne Datum"
         className="mc-root shrink-0 border-t border-paper-line bg-paper-card"
       >
-        <button
-          ref={toggleRef}
-          type="button"
-          onClick={() => onOpenChange(true)}
-          aria-haspopup="dialog"
-          aria-label={`Erinnerungen ohne Datum, ${countLabel}, Wortwolke groß öffnen`}
-          className="mc-toggle flex w-full cursor-pointer items-center gap-2.5 px-4 py-2.5 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-fox sm:gap-3 sm:px-5"
-        >
-          {/* Eine Wolke. Mehr Erklärung braucht es nicht. */}
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 20 20"
-            fill="none"
-            aria-hidden="true"
-            className="shrink-0 text-coal-faint"
+        {/*
+          Eine Zeile, zwei Arten von Ziel: links die Leiste selbst, die die
+          ganze Wolke aufzieht, rechts daneben die lautesten Themen, von denen
+          jedes für sich anklickbar ist. Deshalb ist das Band kein einziger
+          großer Knopf mehr — Knöpfe dürfen nicht ineinander stecken.
+        */}
+        <div className="flex w-full items-center gap-2.5 px-4 py-2.5 sm:gap-3 sm:px-5">
+          <button
+            ref={toggleRef}
+            type="button"
+            onClick={(event) => openCloud(null, event.currentTarget)}
+            aria-haspopup="dialog"
+            aria-label={`Erinnerungen ohne Datum, ${countLabel}, Wortwolke groß öffnen`}
+            className="mc-toggle -my-1 flex shrink-0 cursor-pointer items-center gap-2 rounded-md py-1 pr-1 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
           >
-            <path
-              d="M5.6 15.5h8.9a3.4 3.4 0 0 0 .5-6.76 4.9 4.9 0 0 0-9.24-1.2 3.6 3.6 0 0 0-.16 7.96Z"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinejoin="round"
-            />
-          </svg>
-
-          <span aria-hidden="true" className="flex min-w-0 flex-1 items-baseline gap-1.5">
-            <span className="truncate text-[13px] leading-5 font-semibold text-coal">
+            {/*
+              Nur noch die Überschrift. Das Wolkenzeichen davor ist weg: Es
+              hat nichts erklärt, was der Text nicht schon sagte, und stand
+              als einziges Bild in einer Zeile aus lauter Schrift. Die Zahl
+              der Beiträge ist ebenfalls weg — im Band führt jetzt das, was
+              die Menschen geschrieben haben, nicht wie viele es waren. Für
+              Vorlesestimmen steht sie weiterhin im `aria-label`, wo sie
+              niemanden stört und trotzdem Auskunft gibt.
+            */}
+            <span
+              aria-hidden="true"
+              className="text-[13px] leading-5 font-semibold whitespace-nowrap text-coal"
+            >
               Erinnerungen ohne Datum
             </span>
-            <span className="shrink-0 text-coal-faint">·</span>
-            <span className="shrink-0 text-[12px] leading-5 text-coal-soft tabular-nums">
-              {countLabel}
+
+            {/*
+              Zwei Pfeile, die auseinanderstreben: Was gleich passiert, ist
+              kein Aufklappen einer Schublade, sondern ein Aufgehen auf den
+              ganzen Bildschirm. Das Zeichen soll dasselbe versprechen — es
+              bleibt, weil es die Handlung des Knopfes zeigt und nicht bloß
+              schmückt.
+            */}
+            <span
+              aria-hidden="true"
+              className="mc-grow flex h-5 w-5 shrink-0 items-center justify-center text-coal-soft"
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M6.2 2.5H2.5v3.7M9.8 2.5h3.7v3.7M6.2 13.5H2.5V9.8M9.8 13.5h3.7V9.8"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             </span>
-          </span>
+          </button>
 
           {/*
-            Vorgeschmack: die drei lautesten Themen in ihrer Kategoriefarbe —
-            als blanke Wörter, genau wie in der Wolke selbst. Ein Kästchen hier
-            und Schrift dort wäre ein Versprechen, das die Vollansicht nicht
-            hält. Getrennt wird mit einem Mittelpunkt, damit aus drei Wörtern
-            kein Satz wird. Auf dem Handy ist dafür kein Platz — dort führt
-            allein die Zahl.
+            Die lautesten Themen — als blanke Wörter in ihrer Kategoriefarbe,
+            genau wie in der Wolke selbst. Ein Kästchen hier und Schrift dort
+            wäre ein Versprechen, das die Vollansicht nicht hält. Getrennt
+            wird mit einem Mittelpunkt, damit aus fünf Wörtern kein Satz wird.
+
+            `overflow-hidden` ist der Notnagel für den Fall, dass ein sehr
+            langer Titel doch einmal über die Zeile hinausragt: Dann wird
+            hinten beschnitten — beim UNwichtigsten Wort — statt umgebrochen.
+            Im Regelfall greift es nie, dafür sorgen die Schwellen in
+            `PEEK_AT`.
           */}
-          <span
-            aria-hidden="true"
-            className="mc-peek hidden shrink-0 items-baseline gap-1.5 sm:flex"
-          >
-            {words.slice(0, PEEK_COUNT).map((word, index) => (
-              <span key={word.entry.id} className="flex items-baseline gap-1.5">
-                {index > 0 && <span className="text-coal-faint">·</span>}
+          <span className="mc-peek flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden sm:gap-2">
+            {peek.map(({ word, size }, index) => {
+              const memoryLabel =
+                word.memories === 1
+                  ? "1 Erinnerung"
+                  : `${word.memories} Erinnerungen`;
+              return (
                 <span
-                  className="max-w-[11rem] truncate text-[12px] leading-4 font-bold"
-                  style={{ color: categoryById(word.entry.category).ink }}
+                  key={word.entry.id}
+                  className={`shrink-0 items-baseline gap-1.5 sm:gap-2 ${PEEK_AT[index]}`}
                 >
-                  {word.label}
+                  {index > 0 && (
+                    <span aria-hidden="true" className="text-[11px] text-coal-faint">
+                      ·
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(event) =>
+                      openCloud(word.entry.id, event.currentTarget)
+                    }
+                    aria-haspopup="dialog"
+                    title={`${word.entry.title} — ${memoryLabel}`}
+                    aria-label={`${word.entry.title}, ${memoryLabel}, öffnen`}
+                    className="mc-peek-word cursor-pointer leading-4 font-bold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-fox"
+                    style={{
+                      color: categoryById(word.entry.category).ink,
+                      fontSize: `${size.toFixed(2)}px`,
+                    }}
+                  >
+                    {word.label}
+                  </button>
                 </span>
-              </span>
-            ))}
+              );
+            })}
           </span>
-
-          {/*
-            Zwei Pfeile, die auseinanderstreben: Was gleich passiert, ist kein
-            Aufklappen einer Schublade, sondern ein Aufgehen auf den ganzen
-            Bildschirm. Das Zeichen soll dasselbe versprechen.
-          */}
-          <span
-            aria-hidden="true"
-            className="mc-grow flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-coal-soft"
-          >
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M6.2 2.5H2.5v3.7M9.8 2.5h3.7v3.7M6.2 13.5H2.5V9.8M9.8 13.5h3.7V9.8"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-        </button>
+        </div>
       </section>
 
       {open && (
@@ -346,8 +474,12 @@ export default function MemoryCloud({
           onOpenEntry={onOpen}
           onAddVoice={onAddVoice}
           onVoicesChanged={onVoicesChanged}
-          onClose={() => onOpenChange(false)}
-          returnFocus={toggleRef}
+          initialSelected={openedWith ?? undefined}
+          onClose={() => {
+            setOpenedWith(null);
+            onOpenChange(false);
+          }}
+          returnFocus={backRef}
         />
       )}
     </>

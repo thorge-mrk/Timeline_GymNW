@@ -51,6 +51,30 @@
   transition-duration: 110ms;
 }
 
+/*
+ * Die Themen im Band sind eigene Wege, keine Beschriftung.
+ *
+ * Damit man das merkt, bevor man klickt, geben sie unter dem Zeiger leicht
+ * nach — dieselbe Sprache wie die Wörter in der Wolke, nur kleiner dosiert,
+ * weil hier eine Zeile steht und kein Bild.
+ */
+.mc-peek-word {
+  transition:
+    transform 160ms var(--ease-out-strong),
+    opacity 160ms var(--ease-out-strong);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mc-peek-word:hover {
+    transform: scale(1.06);
+  }
+}
+
+.mc-peek-word:active {
+  transform: scale(0.94);
+  transition-duration: 110ms;
+}
+
 /* ========================================================================== */
 /*  Vollansicht — die Fläche                                                  */
 /* ========================================================================== */
@@ -563,7 +587,9 @@
   .mcf-x:active,
   .mcf-rest-item:active,
   .mc-toggle:hover .mc-grow,
-  .mc-toggle:active .mc-grow {
+  .mc-toggle:active .mc-grow,
+  .mc-peek-word:hover,
+  .mc-peek-word:active {
     transform: none;
   }
 
