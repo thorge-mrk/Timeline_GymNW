@@ -56,19 +56,24 @@ export function StepProgress({
   const filled = (current + 1) / total;
 
   return (
-    <div className="border-b border-paper-line pb-4">
+    <div className="border-b border-paper-line pb-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[11px] font-bold tracking-wider text-coal-faint uppercase">
+          <span className="tabular-nums">
+            Schritt {current + 1} von {total}
+          </span>
+        </p>
+        <p className="hint hidden truncate sm:block">
+          {steps[current]?.title ?? ""}
+        </p>
+      </div>
+
       {/* Nur Optik — vorgelesen wird die Live-Region weiter unten. */}
-      <div aria-hidden className="step-bar">
+      <div aria-hidden className="step-bar mt-2.5">
         <span className="step-bar__fill" style={{ transform: `scaleX(${filled})` }} />
       </div>
 
-      {/*
-        Zähler und Punkte teilen sich eine Zeile. Früher standen darüber noch
-        „Schritt 3 von 4“ und der Titel des Schritts — der Titel steht als
-        Überschrift ohnehin gleich darunter, und jede Zeile hier fehlt unten
-        beim Eingabefeld.
-      */}
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3.5 flex items-center gap-2">
         {steps.map((step, index) => {
           const done = index < current;
           const here = index === current;
@@ -89,11 +94,6 @@ export function StepProgress({
             </button>
           );
         })}
-        <p className="ml-auto text-[11px] font-bold tracking-wider text-coal-faint uppercase">
-          <span className="tabular-nums">
-            Schritt {current + 1} von {total}
-          </span>
-        </p>
       </div>
     </div>
   );

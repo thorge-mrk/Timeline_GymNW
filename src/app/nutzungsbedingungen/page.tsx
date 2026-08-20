@@ -167,7 +167,7 @@ export default function NutzungsbedingungenPage() {
 
         <Section title="6. Nutzungsrechte an eingereichten Inhalten">
           <p>
-            Eingereichte Texte und Fotos verbleiben im Eigentum
+            Eingereichte Texte, Fotos und Audioaufnahmen verbleiben im Eigentum
             bzw. Urheberrecht der einreichenden bzw. abgebildeten Person. Mit
             dem Einreichen räumt die einreichende Person dem Gymnasium Neu
             Wulmstorf ein einfaches, unentgeltliches Nutzungsrecht ein, den

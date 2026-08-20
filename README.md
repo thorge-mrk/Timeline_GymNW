@@ -59,7 +59,7 @@ dazu Open Sans und weiche Kartenschatten.
 - **Live-Updates ohne Reload** — neue Einträge erscheinen sofort bei allen Besuchern.
   Unten links sammelt ein kleiner Kreis die neuen Einträge und zeigt ihre Anzahl; ein Klick
   springt der Reihe nach zu ihnen. Rührt niemand die Seite an, fliegt die Kamera nach
-  **5 Sekunden Ruhe** von selbst zum nächsten neuen Eintrag — wer gerade zoomt oder
+  **8 Sekunden Ruhe** von selbst zum nächsten neuen Eintrag — wer gerade zoomt oder
   schiebt, wird dabei nie unterbrochen.
 - **Einstellungen (Zahnrad oben rechts)**
   - **Vollbildmodus** — blendet die Fußzeile aus und fordert den Vollbildmodus des Geräts
@@ -69,11 +69,8 @@ dazu Open Sans und weiche Kartenschatten.
 - **Bild-Komprimierung im Browser** — Fotos werden schon auf dem Gerät auf max. 1600 px
   verkleinert und als WebP (Fallback JPEG) hochgeladen. Das spart Upload-Zeit im
   Schul-WLAN und hält den Speicherplatz klein.
-- **Eintragen ohne Scrollen** — der geführte Ablauf steht auf einer Bühne von genau
-  einer Bildschirmhöhe: Fortschritt oben, Frage in der Mitte, „Zurück“ und „Weiter“
-  fest am unteren Rand. Gescrollt wird höchstens im Erzählfeld selbst. Am Aktionstag
-  steht neben dem iPad ein Mensch und erzählt — da darf der „Weiter“-Knopf nicht unter
-  dem Bildschirmrand verschwinden.
+- **Audio-Interviews** — aufgenommene Gespräche mit Ehemaligen lassen sich anhören.
+  Hochladen kann sie ein Admin-Konto.
 
 ---
 
@@ -130,12 +127,9 @@ Das gesamte Datenbank-Schema liegt versioniert im Repo unter `supabase/migration
 | --- | --- |
 | `0001_schema.sql` | Tabelle `entries`, Indizes, Constraints, `sort_date` |
 | `0002_policies.sql` | Row-Level-Security-Policies (wer darf was) |
-| `0003_storage.sql` | Storage-Buckets für Bilder und Ton inkl. Limits |
+| `0003_storage.sql` | Storage-Buckets `entry-images` und `entry-audio` inkl. Limits |
 | `0004_realtime.sql` | Trigger für die Live-Updates (Realtime Broadcast) |
 | `0005_advisor_fixes.sql` | Nacharbeiten aus den Supabase-Advisors (Security/Performance) |
-| `0006`–`0017` | Rechte-Feinschliff, Galerie, Stimmen, Einträge ohne Datum |
-| `0018_write_rate_limit.sql` | Eintrags-Limit je Konto (10/Minute, 150/Stunde) |
-| `0019_remove_audio.sql` | Audio-Interviews entfernt: Spalte, Policies, Bucket-Rechte |
 
 Zusätzlich gibt es **Beispieldaten** in `supabase/seed.sql`: 16 fiktive, aber realistisch
 klingende Einträge über 1971–2025, damit der Zeitstrahl beim Entwickeln gut aussieht.
@@ -165,7 +159,7 @@ to sign up“ aktiviert wird, kann sich niemand ein Konto anlegen.
 
 | Rolle | Darf |
 | --- | --- |
-| `admin` | **alles**: Einträge anlegen, **bearbeiten und löschen**, Meilensteine setzen, Bilder hochladen |
+| `admin` | **alles**: Einträge anlegen, **bearbeiten und löschen**, Meilensteine setzen, Audio-Interviews hochladen |
 | `editor` | **neue Einträge anlegen**, auch als „Wichtig“ markiert — die Rolle für die iPads am Aktionstag |
 
 Es kann mehrere Konten jeder Rolle geben. Anonyme Besucher dürfen ausschließlich lesen.
@@ -248,32 +242,12 @@ select private.delete_account('iPad 3');
    lassen. Beide Seiten sind derzeit als **Entwurf** gekennzeichnet und enthalten
    orange markierte Stellen `[BITTE PRÜFEN]`, die noch geklärt werden müssen
    (Schulleitung, Schulträger, Aufsichtsbehörde, Verantwortliche(r) nach § 18 MStV,
-   Datenschutzbeauftragte(r), Einwilligungsprozess für Fotos).
-7. **Rollen prüfen!** Ein Blick auf `select * from private.list_accounts();` — dort muss
-   je iPad ein **`editor`** stehen und nur für die Betreuung ein `admin`. Stand
-   August 2026 tragen **alle** eingerichteten Konten die Rolle `admin`; damit gelten die
-   engeren Regeln (keine Bilder, kein Meilenstein, engeres Eintrags-Limit) für niemanden.
-   Umstellen per Name:
-   ```sql
-   select private.set_account_role('iPad Aula', 'editor');
-   ```
-8. **Captcha einschalten (Cloudflare Turnstile).** Der Code ist fertig — es fehlen nur
-   die Schlüssel:
-   1. Cloudflare-Dashboard → **Turnstile** → Widget anlegen (Domain eintragen,
-      Modus „Managed“). Man bekommt einen **Site-Key** und einen **Secret-Key**.
-   2. Supabase-Dashboard → **Authentication → Attack Protection** → Captcha einschalten,
-      Anbieter **Turnstile**, den **Secret-Key** eintragen, speichern.
-   3. Den **Site-Key** als `NEXT_PUBLIC_TURNSTILE_SITE_KEY` in Cloudflare Pages
-      (Environment Variables) und in die lokale `.env` eintragen, dann neu bauen.
-
-   Reihenfolge beachten: erst Punkt 3, dann Punkt 2 — sonst weist Supabase Anmeldungen
-   ab, bevor die Seite überhaupt ein Merkmal mitschicken kann. Solange der Site-Key leer
-   ist, meldet man sich an wie bisher; ist er gesetzt, sitzt zwischen Passwort und Knopf
-   eine unsichtbare Prüfung, und automatisiertes Passwort-Raten hört auf.
-9. **Leeren Audio-Eimer löschen:** Storage → `entry-audio` → *Delete bucket*. Die
-   Schreibrechte darauf sind mit Migration `0019` bereits weg; der Eimer selbst lässt
-   sich nur im Dashboard entfernen (Supabase schützt die Storage-Tabellen vor direktem
-   SQL-Löschen). Er ist nachweislich leer.
+   Datenschutzbeauftragte(r), Einwilligungsprozess für Fotos und Audio).
+7. **Optional: Captcha (Cloudflare Turnstile)** gegen automatisierte Login-Versuche —
+   Dashboard → Authentication → **Attack Protection**. Das erfordert eine kleine
+   Code-Ergänzung beim Login (Widget einbinden und `captchaToken` mitschicken); siehe die
+   Supabase-Dokumentation zum Stichwort „Captcha“. Für vier Accounts reichen die
+   eingebauten Rate-Limits in der Regel aus.
 
 ---
 
@@ -292,8 +266,6 @@ select private.delete_account('iPad 3');
 6. **Environment Variables** (Werte aus `.env` übernehmen):
    - `NEXT_PUBLIC_SUPABASE_URL` = `https://cudjqqnnnahswtwswicj.supabase.co`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` = der `sb_publishable_…`-Wert aus `.env`
-   - `NEXT_PUBLIC_TURNSTILE_SITE_KEY` = der Site-Key des Turnstile-Widgets (optional;
-     leer lassen, solange das Captcha nicht eingerichtet ist)
 7. **„Save and Deploy“** — nach ein bis zwei Minuten ist die Seite unter einer
    `*.pages.dev`-Adresse erreichbar. Jeder Push auf den gewählten Branch löst
    automatisch ein neues Deployment aus.
@@ -318,8 +290,7 @@ angewendet — es ist keine weitere Konfiguration nötig.
 Kurz übersetzt, was die **Content-Security-Policy** erlaubt: Skripte, Styles und
 Schriftarten dürfen **ausschließlich von der eigenen Domain** kommen; Bilder, Medien und
 Datenverbindungen zusätzlich vom Supabase-Projekt (inklusive der WebSocket-Verbindung
-`wss://…` für die Live-Updates) sowie — allein für das Captcha auf der Anmeldeseite —
-von `challenges.cloudflare.com`. Alles andere — fremde Skripte, Werbenetzwerke,
+`wss://…` für die Live-Updates). Alles andere — fremde Skripte, Werbenetzwerke,
 Tracking-Pixel — wird vom Browser blockiert. Ergänzend gilt: Die Seite **darf nicht in
 einen iframe eingebettet** werden (`frame-ancestors 'none'` + `X-Frame-Options: DENY`,
 Schutz vor Clickjacking), der Browser rät keine Dateitypen (`nosniff`), beim Wechsel auf
@@ -338,7 +309,7 @@ Der Betrieb ist auf den kostenlosen Tarifen ausgelegt:
 
 **Supabase (Free)**
 - **500 MB** Datenbank
-- **1 GB** Speicher (Storage) für Bilder
+- **1 GB** Speicher (Storage) für Bilder und Audio
 - **5 GB** Traffic pro Monat
 - Realtime: max. **200 gleichzeitige Verbindungen** und **2 Mio. Nachrichten/Monat**
 
@@ -347,20 +318,10 @@ Lediglich die Live-Updates können pausieren; ein Neuladen der Seite zeigt dann 
 alle Einträge. Für den Aktionstag heißt das: Selbst im schlimmsten Fall geht nichts
 verloren, es fehlt höchstens der „Wow“-Effekt des automatischen Erscheinens.
 
-Damit der Speicher lange reicht, werden **Bilder schon im Browser komprimiert** — auf
-max. 1600 px und als **WebP** (JPEG nur als Notnagel für sehr alte Geräte). Typisch
-landen sie bei **0,2–0,4 MB** pro Foto; bei 1 GB Storage sind das grob 2.500 bis 5.000
-Bilder.
-
-**Audio-Interviews gibt es bewusst nicht** (mehr). Sie waren der einzige Posten, der die
-kostenlosen Grenzen wirklich hätte sprengen können: 25 MB je Datei gegen 1 GB Speicher
-und 5 GB Traffic im Monat. Hochgeladen wurde nie eine — also ist die Funktion samt
-Spalte, Rechten und Abspieler wieder verschwunden.
-
-Sollte der Traffic wider Erwarten klettern, ist der nächste Schritt **nicht** ein
-weiterer Dienst, sondern eine kleine Vorschau-Version jedes Bildes (~480 px), die der
-Zeitstrahl statt des großen Fotos zeigt. Das senkt den Traffic um das Fünf- bis
-Zehnfache und ändert an der Architektur nichts.
+Damit der Speicher lange reicht, werden **Bilder schon im Browser komprimiert** — typisch
+landen sie bei **0,2–0,4 MB** pro Foto. Bei 1 GB Storage sind das grob 2.500 bis 5.000
+Bilder. Audio-Interviews sind deutlich größer (max. 25 MB pro Datei); hier lohnt es sich,
+sparsam zu sein.
 
 ---
 
@@ -376,34 +337,15 @@ Wer darf was?
 | Eintrag löschen | ✗ | ✗ | ✓ |
 | Eintrag als „Wichtig“ markieren | ✗ | ✓ | ✓ |
 | Meilenstein anlegen | ✗ | ✗ | ✓ |
-| Bild hochladen | ✗ | ✗ | ✓ |
+| Audio-Interview hochladen | ✗ | ✗ | ✓ |
 | **Konto anlegen** | ✗ | ✗ | ✗ (nur per SQL im Dashboard) |
-
-**Wie oft?** Auch ein angemeldetes Konto darf die Zeitachse nicht fluten — etwa ein iPad,
-das jemand unbeaufsichtigt mitnimmt. Ein Trigger in der Datenbank begrenzt deshalb neue
-Einträge auf **10 pro Minute und 150 pro Stunde** je Konto (Stimmen: 20/Minute,
-300/Stunde). Ein `admin`-Konto bekommt mehr Luft (60/Minute, 600/Stunde), ist aber
-**nicht** ausgenommen: Eine Grenze, die für das mächtigste Konto nicht gilt, schützt am
-Ende nichts. Wer die Grenze reißt, sieht einen freundlichen deutschen Satz — und das
-Getippte bleibt im Formular stehen.
-
-**Wer überhaupt?** Vor der Anmeldung sitzt (sobald eingerichtet, siehe Go-Live-Punkt 8)
-eine **Cloudflare-Turnstile-Prüfung**. Supabase weist jeden Anmeldeversuch ohne gültiges,
-frisches Merkmal ab, bevor das Passwort überhaupt geprüft wird — automatisiertes
-Durchprobieren hört damit auf. Für Menschen ist die Prüfung unsichtbar.
-
-Warum kein Cloudflare-Worker davor? Weil er nichts sehen würde: Die Website liegt zwar
-bei Cloudflare, die Anmeldung läuft aber direkt vom Browser zu Supabase. Ein Worker
-müsste dafür sämtliche Supabase-Aufrufe umleiten — und dann liefe die ganze Seite über
-sein Tageslimit von 100.000 Anfragen, statt wie heute unbegrenzt statisch ausgeliefert zu
-werden.
 
 Diese Matrix ist **nicht** bloß eine Frage der Benutzeroberfläche, sondern wird in der
 Datenbank erzwungen: Die Rolle liegt fälschungssicher im signierten Anmelde-Token (JWT)
 unter `app_metadata` und kann vom Browser aus nicht verändert werden — jede Anfrage wird
 serverseitig gegen die RLS-Policies geprüft. Ebenso erzwingt der Storage-Bucket die Limits
-für Dateigröße und Dateityp serverseitig (Bilder max. 2 MB und nur WebP/JPEG), sodass
-auch manipulierte Uploads abgewiesen werden.
+für Dateigröße und Dateityp serverseitig (Bilder max. 2 MB und nur WebP/JPEG, Audio max.
+25 MB und nur gängige Audioformate), sodass auch manipulierte Uploads abgewiesen werden.
 
 ---
 

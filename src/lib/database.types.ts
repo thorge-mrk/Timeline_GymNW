@@ -1,6 +1,6 @@
 /**
  * Generiert aus dem Live-Schema via Supabase MCP (generate_typescript_types),
- * Stand 2026-08-20. Nach Schema-Änderungen neu generieren — nicht von Hand bearbeiten.
+ * Stand 2026-08-19. Nach Schema-Änderungen neu generieren — nicht von Hand bearbeiten.
  */
 export type Json =
   | string
@@ -20,6 +20,7 @@ export type Database = {
     Tables: {
       entries: {
         Row: {
+          audio_path: string | null
           author_name: string | null
           category: string
           class_name: string | null
@@ -40,6 +41,7 @@ export type Database = {
           year: number | null
         }
         Insert: {
+          audio_path?: string | null
           author_name?: string | null
           category: string
           class_name?: string | null
@@ -60,6 +62,7 @@ export type Database = {
           year: number | null
         }
         Update: {
+          audio_path?: string | null
           author_name?: string | null
           category?: string
           class_name?: string | null
