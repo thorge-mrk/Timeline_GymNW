@@ -5,12 +5,23 @@ import { useEffect, useRef, useState } from "react";
 /**
  * Der öffentliche Schlüssel des Turnstile-Widgets.
  *
- * Er steht bewusst in einer Umgebungsvariablen und nicht im Code: Fehlt er,
- * wird gar kein Widget geladen und die Anmeldung läuft wie bisher. So bricht
- * nichts, solange die Schule den Schutz in Supabase noch nicht eingeschaltet
- * hat — und sobald sie ihn einschaltet, genügt es, den Schlüssel zu setzen.
+ * Er steht hier im Klartext, und das ist richtig so: Der Site Key ist der
+ * öffentliche Teil des Paares — er wird ohnehin in jede Seite ausgeliefert
+ * und ist bei Cloudflare an unsere Domain gebunden. Anderswo eingesetzt taugt
+ * er nichts. Der geheime Gegenpart liegt allein bei Supabase und kommt in
+ * diesem Verzeichnis nirgends vor.
+ *
+ * Eine Umgebungsvariable hat trotzdem Vorrang — für den Fall, dass die Schule
+ * den Schlüssel einmal tauscht, ohne den Code anzufassen. Genau darauf haben
+ * wir uns zuerst verlassen, und es ging schief: Beim Bauen auf Cloudflare
+ * Pages kam die Variable nicht an, der Schlüssel fehlte im ausgelieferten
+ * Bündel, und auf der Anmeldeseite stand nur „Sicherheitsprüfung konnte nicht
+ * geladen werden“. Ein fest hinterlegter Rückfall macht die Seite von dieser
+ * Einstellung unabhängig.
  */
-const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
+const FALLBACK_SITE_KEY = "0x4AAAAAAEWftVQyn1lB7dkV";
+const SITE_KEY =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || FALLBACK_SITE_KEY;
 
 /** Ist der Schutz überhaupt eingerichtet? */
 export const turnstileEnabled = SITE_KEY.length > 0;
@@ -25,7 +36,7 @@ interface TurnstileApi {
     opts: {
       sitekey: string;
       callback: (token: string) => void;
-      "error-callback": () => void;
+      "error-callback": (code?: string) => void;
       "expired-callback": () => void;
       theme?: "light" | "dark" | "auto";
       language?: string;
@@ -44,19 +55,71 @@ declare global {
 /** Das Skript nur einmal laden, auch wenn mehrere Widgets danach fragen. */
 let scriptPromise: Promise<void> | null = null;
 
+/**
+ * Warten, bis Cloudflare sich wirklich eingerichtet hat.
+ *
+ * `script.onload` heißt nur, dass die Datei da ist — `window.turnstile` wird
+ * einen Wimpernschlag später gesetzt. Wer sofort danach greift, findet nichts
+ * und baut still kein Widget: kein Fehler, kein Kästchen, keine Erklärung.
+ * Genau dieser Wettlauf ist uns passiert.
+ */
+function waitForApi(timeoutMs = 8000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tick = () => {
+      if (window.turnstile) return resolve();
+      if (Date.now() - start > timeoutMs) {
+        return reject(new Error("Turnstile hat sich nicht gemeldet."));
+      }
+      window.setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
 function loadScript(): Promise<void> {
   if (scriptPromise) return scriptPromise;
   scriptPromise = new Promise<void>((resolve, reject) => {
     if (window.turnstile) return resolve();
+
+    // Ein bereits eingehängtes Skript nicht ein zweites Mal laden.
+    const vorhanden = document.querySelector<HTMLScriptElement>(
+      'script[data-turnstile="1"]'
+    );
+    if (vorhanden) {
+      waitForApi().then(resolve, reject);
+      return;
+    }
+
     const el = document.createElement("script");
     el.src = SCRIPT_SRC;
     el.async = true;
     el.defer = true;
-    el.onload = () => resolve();
-    el.onerror = () => reject(new Error("Turnstile konnte nicht geladen werden."));
+    el.dataset.turnstile = "1";
+    el.onload = () => waitForApi().then(resolve, reject);
+    el.onerror = () =>
+      reject(new Error("Turnstile konnte nicht geladen werden."));
     document.head.appendChild(el);
   });
   return scriptPromise;
+}
+
+/**
+ * Cloudflares Fehlernummern in Klartext — jedenfalls die, die man sich selbst
+ * einhandelt. Alles andere bleibt eine Nummer, aber eine sichtbare: Ohne sie
+ * steht man vor „geht nicht" und kann nichts nachsehen.
+ */
+function describeTurnstileError(code: string): string {
+  if (code.startsWith("110200")) {
+    return "Diese Adresse ist für den Schlüssel nicht freigegeben. In Cloudflare muss die Domain beim Widget eingetragen sein.";
+  }
+  if (code.startsWith("1101") || code.startsWith("110100")) {
+    return "Der Schlüssel wird von Cloudflare nicht erkannt.";
+  }
+  if (code.startsWith("300") || code.startsWith("600")) {
+    return "Cloudflare meldet einen vorübergehenden Fehler.";
+  }
+  return "Cloudflare hat die Prüfung abgelehnt.";
 }
 
 interface TurnstileProps {
@@ -83,7 +146,7 @@ interface TurnstileProps {
  */
 export function Turnstile({ onToken, onUnavailable }: TurnstileProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   // Die Rückmeldung über eine Ref, damit ein neuer Render das Widget nicht
   // abreißt und neu aufbaut — das würde den Token verwerfen.
@@ -111,17 +174,25 @@ export function Turnstile({ onToken, onUnavailable }: TurnstileProps) {
           callback: (token) => onTokenRef.current(token),
           // Beides heißt: Der Token taugt nicht mehr. Lieber ehrlich `null`
           // melden, als mit einem alten Token in eine Fehlermeldung laufen.
-          "error-callback": () => {
-            setFailed(true);
+          "error-callback": (code) => {
+            setFailed(
+              code
+                ? `${describeTurnstileError(code)} (Cloudflare-Code ${code})`
+                : "Cloudflare hat die Prüfung abgelehnt."
+            );
             onTokenRef.current(null);
             onUnavailableRef.current?.();
           },
           "expired-callback": () => onTokenRef.current(null),
         });
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
-        setFailed(true);
+        setFailed(
+          err instanceof Error && err.message.includes("nicht gemeldet")
+            ? "Cloudflare antwortet nicht — vermutlich blockiert etwas die Verbindung."
+            : "Die Sicherheitsprüfung konnte nicht geladen werden."
+        );
         onUnavailableRef.current?.();
       });
 
@@ -143,9 +214,10 @@ export function Turnstile({ onToken, onUnavailable }: TurnstileProps) {
     <div>
       <div ref={hostRef} className="flex justify-center" />
       {failed && (
-        <p className="hint mt-2 text-center">
-          Die Sicherheitsprüfung konnte nicht geladen werden. Bitte die Seite
-          neu laden.
+        <p className="hint mt-2 text-center leading-relaxed">
+          {failed}
+          <br />
+          Die Anmeldung wird trotzdem versucht.
         </p>
       )}
     </div>

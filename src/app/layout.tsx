@@ -54,9 +54,15 @@ export default function RootLayout({
       <body className="flex min-h-dvh flex-col">
         <SiteHeader />
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-          {children}
-        </main>
+        {/*
+          Normalerweise wächst die Seite mit ihrem Inhalt und der Browser
+          scrollt sie — so, wie man es überall kennt. Nur der Zeitstrahl macht
+          es anders: Er ist eine Tafel, die den Bildschirm füllt und in sich
+          selbst geschoben wird. Das schaltet er über `data-view` am Body
+          selbst ein (siehe globals.css); ein Formular in einem Rahmen mit
+          eigenem Rollbalken wäre auf dem Handy eine Zumutung.
+        */}
+        <main className="flex flex-1 flex-col">{children}</main>
 
         {/* Beim statischen Export wird das Jahr einmal beim Bauen bestimmt. */}
         <SiteFooter year={new Date().getFullYear()} />
